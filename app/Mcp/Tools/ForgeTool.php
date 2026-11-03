@@ -66,7 +66,7 @@ abstract class ForgeTool extends Tool
         } catch (ToolDenied $e) {
             $ctx = $this->context($request);
             if ($ctx instanceof ToolContext) {
-                $this->audit($ctx, $request, $e->target, AuditEntry::DENIED, $e->getMessage(), $started);
+                $this->audit($ctx, $request, $e->target, AuditEntry::DENIED, $e->getMessage(), $started, $this->auditSecrets($ctx, $e->target));
 
                 return Response::error($this->scrubToken($ctx, $e->getMessage()));
             }
@@ -134,7 +134,7 @@ abstract class ForgeTool extends Tool
 
             if (! $this->permits($ctx, $resolved)) {
                 $message = "{$this->capability()->label()} is not permitted on {$resolved->describe()} for this access token. The user can enable it in the Forge MCP dashboard.";
-                $this->audit($ctx, $request, $resolved, AuditEntry::DENIED, $message, $started);
+                $this->audit($ctx, $request, $resolved, AuditEntry::DENIED, $message, $started, $this->auditSecrets($ctx, $resolved));
 
                 return Response::error($message);
             }
@@ -150,7 +150,8 @@ abstract class ForgeTool extends Tool
             return $this->failed($ctx, $request, $resolved, $e->agentMessage(), $started);
         } catch (ToolDenied $e) {
             $message = $this->scrubToken($ctx, $e->getMessage());
-            $this->audit($ctx, $request, $e->target ?? $resolved, AuditEntry::DENIED, $message, $started);
+            $deniedOn = $e->target ?? $resolved;
+            $this->audit($ctx, $request, $deniedOn, AuditEntry::DENIED, $message, $started, $this->auditSecrets($ctx, $deniedOn));
 
             return Response::error($message);
         } catch (ToolError|InvalidArgumentException $e) {
@@ -446,7 +447,7 @@ abstract class ForgeTool extends Tool
     }
 
     /**
-     * Secrets already cached for a site target, for scrubbing audit arguments after a failure. Never
+     * Secrets already cached for a site target, for scrubbing audit arguments after a failure or denial. Never
      * calls Forge and never refills the cache (a failed .env write forgets it on purpose).
      */
     private function auditSecrets(ToolContext $ctx, ?Target $target): ?SecretSet

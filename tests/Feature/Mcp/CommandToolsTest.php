@@ -8,6 +8,7 @@ use App\Models\AuditEntry;
 use App\Permissions\Capability;
 use App\Permissions\ScopeType;
 use App\Permissions\Target;
+use App\Security\SiteSecrets;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -289,3 +290,18 @@ it('audit arguments are scrubbed with site secrets and CLI password flags', func
     'mysql -p' => 'mysql -uforge -pSecret123 db',
     'env value' => 'echo base64:supersecretvalue123456',
 ]);
+
+it('a denied call masks cached site secrets in the audit arguments without calling Forge for them', function () use ($args) {
+    cmdFakes();
+    SiteSecrets::remember('acme', 12, ['DB_PASSWORD' => 'warm-cache-value-7781']);
+    $user = mcpOwner(['acme']);
+    mcpActAs($user, mcpToken($user, [[Capability::RunCommands, ScopeType::Site, new Target('acme', 1, 13), true]]));
+
+    ForgeServer::actingAs($user)->tool(RunSiteCommand::class, $args + ['command' => 'echo warm-cache-value-7781'])
+        ->assertHasErrors(['not permitted']);
+
+    $entry = AuditEntry::query()->sole();
+    expect($entry->outcome)->toBe('denied')
+        ->and($entry->arguments['command'])->not->toContain('warm-cache-value-7781')->toContain('[REDACTED');
+    Http::assertNotSent(fn ($r) => str_contains($r->url(), '/environment'));
+});
