@@ -18,6 +18,12 @@
                     <flux:sidebar.item icon="link" :href="route('forge.connection')" :current="request()->routeIs('forge.connection')" wire:navigate>
                         {{ __('Forge connection') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="key" :href="route('tokens.index')" :current="request()->routeIs('tokens.*')" wire:navigate>
+                        {{ __('Access tokens') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="key" :href="route('tokens.index')" :current="request()->routeIs('tokens.*')" wire:navigate>
+                        {{ __('Access tokens') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 
