@@ -285,6 +285,36 @@ abstract class ForgeTool extends Tool
         return $server;
     }
 
+    /**
+     * Additionally require this tool's capability on the target's whole server, for operations whose
+     * blast radius is the server even when they name a site (e.g. a root worker or raw supervisor
+     * config: the `forge` user and supervisor are shared by every site on the server).
+     *
+     * Returns $target unchanged when it is already a server target or is denied itself (guarded()
+     * then denies on it); throws ToolDenied with the server target when only the server denies.
+     *
+     * @param  string  $why  what needs the server-level grant, e.g. "Running a worker as root"
+     *
+     * @throws ToolDenied
+     */
+    protected function requireServerPermission(ToolContext $ctx, Target $target, string $why): Target
+    {
+        if ($target->siteId === null || $target->organization === null || $target->serverId === null || ! $this->permits($ctx, $target)) {
+            return $target;
+        }
+
+        $server = new Target($target->organization, $target->serverId);
+
+        if (! app(PermissionEngine::class)->allows($ctx->token, $this->capability(), $server)) {
+            throw new ToolDenied(
+                "{$this->capability()->label()} is not permitted on {$server->describe()} for this access token. {$why} affects every site on the server, so it needs the permission on the server, not just on a site. The user can enable it in the Forge MCP dashboard.",
+                $server,
+            );
+        }
+
+        return $target;
+    }
+
     /** The cached record name of a server, falling back to "server {id}". */
     protected function serverName(ToolContext $ctx, string $org, int $serverId): string
     {

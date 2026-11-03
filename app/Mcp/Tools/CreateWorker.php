@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Support\ToolDenied;
+use App\Mcp\Support\ToolError;
 use App\Permissions\Capability;
+use App\Permissions\Target;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 
-#[Description('Create a background process (queue worker or daemon) on a Forge server, optionally for a site. Runs as the forge user unless user=root is given. This executes an arbitrary command on the server.')]
+#[Description('Create a background process (queue worker or daemon) on a Forge server, optionally for a site. Runs as the forge user unless user=root is given (root needs the permission on the whole server). With site_id, a directory must be inside the site root. This executes an arbitrary command on the server.')]
 #[IsDestructive]
 class CreateWorker extends ForgeTool
 {
@@ -31,9 +34,9 @@ class CreateWorker extends ForgeTool
             'command' => $schema->string()->required()->description('Command to run, e.g. "php artisan queue:work --tries=3".'),
             'site_id' => $schema->integer()->description('Site the process belongs to. Permission is then checked on that site.'),
             'name' => $schema->string()->description('Process name. Defaults to the command.'),
-            'user' => $schema->string()->enum(['forge', 'root'])->default('forge')->description('System user to run as.'),
+            'user' => $schema->string()->enum(['forge', 'root'])->default('forge')->description('System user to run as. root needs the permission on the whole server.'),
             'processes' => $schema->integer()->min(1)->max(20)->default(1)->description('Number of processes (1-20).'),
-            'directory' => $schema->string()->description('Working directory. Leave unset to let Forge decide.'),
+            'directory' => $schema->string()->description('Working directory (absolute). With site_id it must be inside the site root. Leave unset to let Forge decide.'),
         ];
     }
 
@@ -56,9 +59,7 @@ class CreateWorker extends ForgeTool
 
         return $this->guarded(
             $request,
-            fn (ToolContext $ctx) => $siteId !== null
-                ? $this->siteTarget($ctx, $org, $serverId, $siteId)
-                : $this->serverTarget($ctx, $org, $serverId),
+            fn (ToolContext $ctx) => $this->target($ctx, $org, $serverId, $siteId, $user, $directory),
             function (ToolContext $ctx) use ($org, $serverId, $siteId, $command, $user, $processes, $directory, $name) {
                 $attrs = ['name' => $name, 'command' => $command, 'user' => $user, 'processes' => $processes]
                     + ($siteId !== null ? ['site_id' => $siteId] : [])
@@ -74,5 +75,73 @@ class CreateWorker extends ForgeTool
                 return "{$label} created on server {$this->serverName($ctx, $org, $serverId)}{$suffix}.";
             },
         );
+    }
+
+    /**
+     * The site (or server) target. A root worker needs the capability on the whole server as well,
+     * and a site worker's directory must lie inside the site's root directory: the `forge` user and
+     * supervisor are shared by every site, so a site grant must not reach beyond the site.
+     *
+     * @throws ToolError|ToolDenied
+     */
+    private function target(ToolContext $ctx, string $org, int $serverId, ?int $siteId, string $user, ?string $directory): Target
+    {
+        if ($siteId === null) {
+            return $this->serverTarget($ctx, $org, $serverId);
+        }
+
+        $target = $this->siteTarget($ctx, $org, $serverId, $siteId);
+
+        if ($directory !== null) {
+            $this->assertInsideSiteRoot($ctx, $org, $serverId, $siteId, $directory);
+        }
+
+        return $user === 'root'
+            ? $this->requireServerPermission($ctx, $target, 'Running a worker as root')
+            : $target;
+    }
+
+    /** @throws ToolError */
+    private function assertInsideSiteRoot(ToolContext $ctx, string $org, int $serverId, int $siteId, string $directory): void
+    {
+        $root = null;
+        foreach ($ctx->forge->sites($org, $serverId) as $site) {
+            if ((int) ($site['id'] ?? 0) === $siteId) {
+                $root = self::normalisePath((string) ($site['root_directory'] ?? ''));
+
+                break;
+            }
+        }
+
+        $dir = self::normalisePath($directory);
+
+        if ($root === null || $root === '/' || $dir === null || ($dir !== $root && ! str_starts_with($dir, $root.'/'))) {
+            throw new ToolError("The directory must be inside the root directory of site {$siteId}".($root !== null && $root !== '/' ? " ({$root})" : '').'. Omit `directory` to let Forge use the site directory, or omit `site_id` (needs the permission on the server).');
+        }
+    }
+
+    /** An absolute path without `.`, empty segments or trailing slashes; null when it is relative or contains `..`. */
+    private static function normalisePath(string $path): ?string
+    {
+        $path = trim($path);
+        if (! str_starts_with($path, '/')) {
+            return null;
+        }
+
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+
+            if ($segment === '..') {
+                // Not resolved lexically: through a symlink (e.g. `current`) `..` lands elsewhere.
+                return null;
+            }
+
+            $segments[] = $segment;
+        }
+
+        return '/'.implode('/', $segments);
     }
 }

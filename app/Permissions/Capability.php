@@ -59,7 +59,7 @@ enum Capability: string
             self::ViewEnv => 'Read the .env file, including secrets.',
             self::EditEnv => 'Change the .env file.',
             self::RunCommands => 'Run arbitrary commands in a site directory.',
-            self::ConfigureWorkers => 'Create and delete queue workers.',
+            self::ConfigureWorkers => 'Create, change and delete background processes (runs arbitrary commands, optionally as root).',
             self::ConfigureDeployments => 'Change the deployment script and quick deploy.',
             self::RebootServer => 'Reboot the whole server.',
             self::MaintenanceMode => 'Put a site into and out of maintenance mode.',

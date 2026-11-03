@@ -33,7 +33,7 @@ class UpdateWorker extends ForgeTool
             'server_id' => $schema->integer()->required()->description('Forge server id.'),
             'worker_id' => $schema->integer()->required()->description('Background process id (from list_workers).'),
             'name' => $schema->string()->required()->description('New name for the process.'),
-            'config' => $schema->string()->description('Raw supervisor configuration to replace the current one. Omit to keep it.'),
+            'config' => $schema->string()->description('Raw supervisor configuration to replace the current one (needs the permission on the whole server). Omit to keep it.'),
         ];
     }
 
@@ -49,7 +49,14 @@ class UpdateWorker extends ForgeTool
 
         return $this->guarded(
             $request,
-            $this->existingWorkerTarget($org, $serverId, $workerId),
+            function (ToolContext $ctx) use ($org, $serverId, $workerId, $config) {
+                $target = ($this->existingWorkerTarget($org, $serverId, $workerId))($ctx);
+
+                // Raw supervisor config can set any user= and command=, so it needs the server grant.
+                return $config !== null
+                    ? $this->requireServerPermission($ctx, $target, 'Replacing a worker\'s raw supervisor config')
+                    : $target;
+            },
             function (ToolContext $ctx) use ($org, $serverId, $workerId, $name, $config) {
                 $ctx->forge->updateBackgroundProcess($org, $serverId, $workerId, $name, $config);
                 $ctx->summary = "Updated worker {$workerId} on server {$serverId}".($config !== null ? ' (supervisor config replaced).' : '.');

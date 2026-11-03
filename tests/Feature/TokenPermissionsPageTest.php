@@ -248,3 +248,13 @@ it('renders for the owner', function () {
 
     get(route('tokens.permissions', $token->getKey()))->assertOk()->assertSee('agent');
 });
+
+it('the configure_workers acknowledgement says it runs arbitrary commands, optionally as root', function () {
+    [, $token] = permsSetup();
+
+    Livewire::test('pages::tokens.permissions', ['token' => $token->getKey()])
+        ->set('global.configure_workers', true)
+        ->call('saveGlobal')
+        ->assertHasErrors(['ack.configure_workers'])
+        ->assertSee('I understand this lets agents create, change and delete background processes (runs arbitrary commands, optionally as root).');
+});

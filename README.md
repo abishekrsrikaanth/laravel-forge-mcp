@@ -19,6 +19,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 - **Per-token permissions.** Each token gets its own set of capabilities, grouped into read, action and risky tiers. Capabilities are independent: none implies another.
 - **Overrides per organization, server and site.** Allow or deny a capability for one organization, server or site without changing the token as a whole. Tools a token cannot use are not listed to the agent.
 - **Server-level only for restarts and reboot.** `restart_services` and `reboot_server` affect every site on a server, so they can never be granted for a single site.
+- **Sites on a server share one Linux user.** Every site on a Forge server runs as the same `forge` user, so a risky capability granted on one site (running commands, editing `.env`, configuring workers) can affect the other sites on that server. Grant risky capabilities per server unless you trust the agent with every site on it. Restarts, reboots, workers that run as root and raw worker (supervisor) config always require the permission at server level; a site-level worker's directory must stay inside the site's root directory.
 - **Secret scrubbing.** Known secrets (for example values from a site's `.env`) are replaced with `[REDACTED]` markers in tool output. Only `get_site_env`, behind its own `view_env` capability, returns raw values.
 - **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Entries are pruned after 90 days (`audit_retention_days`) by a daily scheduled job.
 - **Worker and site matching rule.** Forge does not say which site a queue worker belongs to, so it is inferred from the worker's directory and site roots, and an action on a worker is allowed only if every site it could belong to permits it (with no match, server-level rules apply).
@@ -88,7 +89,7 @@ In Forge, create an API token and select only the scopes you need. The table sho
 | `view_env` | risky | off | Read the .env file, including secrets. | `server:view` |
 | `edit_env` | risky | off | Change the .env file. | `site:manage-environment` |
 | `run_commands` | risky | off | Run arbitrary commands in a site directory. | `site:manage-commands` |
-| `configure_workers` | risky | off | Create and delete queue workers. | `server:create-daemons`, `server:delete-daemons` |
+| `configure_workers` | risky | off | Create, change and delete background processes (runs arbitrary commands, optionally as root). | `server:create-daemons`, `server:delete-daemons` |
 | `configure_deployments` | risky | off | Change the deployment script and quick deploy. | `site:manage-deploys` |
 | `reboot_server` | risky | off | Reboot the whole server. | `server:manage-services` |
 | `maintenance_mode` | action | off | Put a site into and out of maintenance mode. | `site:manage-commands` |

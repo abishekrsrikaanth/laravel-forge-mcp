@@ -264,3 +264,89 @@ it('worker tools are hidden for a fresh token', function () {
 
     Http::assertNothingSent();
 });
+
+it('create_worker as root with only a site grant is denied and does not post', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, false],
+        [Capability::ConfigureWorkers, ScopeType::Site, new Target('acme', 1, 12), true],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'node app.js', 'site_id' => 12, 'user' => 'root'])
+        ->assertHasErrors(['not permitted on server 1']);
+
+    Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    $entry = AuditEntry::query()->latest('id')->first();
+    expect($entry->outcome)->toBe('denied')
+        ->and($entry->server_id)->toBe(1)
+        ->and($entry->site_id)->toBeNull();
+
+    // The same site grant still allows a forge-user worker.
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'node app.js', 'site_id' => 12])->assertOk();
+});
+
+it('create_worker as root is allowed with a server grant, and still needs the site', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, false],
+        [Capability::ConfigureWorkers, ScopeType::Server, new Target('acme', 1), true],
+        [Capability::ConfigureWorkers, ScopeType::Site, new Target('acme', 1, 13), false],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'node app.js', 'site_id' => 12, 'user' => 'root'])
+        ->assertOk()->assertSee('as root');
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'node app.js', 'user' => 'root'])
+        ->assertOk();
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'node app.js', 'site_id' => 13, 'user' => 'root'])
+        ->assertHasErrors(['not permitted on site 13']);
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+});
+
+it('create_worker with a site only accepts a directory inside that site root', function (string $directory, bool $ok) use ($configure) {
+    $user = wrkUser([$configure]);
+
+    $response = ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'site_id' => 12, 'directory' => $directory]);
+
+    if ($ok) {
+        $response->assertOk();
+        expect(wrkSent('POST', '/servers/1/background-processes'))->toMatchArray(['directory' => $directory]);
+    } else {
+        $response->assertHasErrors(['must be inside the root directory of site 12']);
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    }
+})->with([
+    'root itself' => ['/home/forge/alpha.test', true],
+    'root with trailing slash' => ['/home/forge/alpha.test/', true],
+    'below the root' => ['/home/forge/alpha.test/current', true],
+    'another site' => ['/home/forge/beta.test', false],
+    'prefix without boundary' => ['/home/forge/alpha.test.bak', false],
+    'parent' => ['/home/forge', false],
+    'escape with dot-dot' => ['/home/forge/alpha.test/../beta.test', false],
+    'relative' => ['alpha.test', false],
+    'elsewhere' => ['/root', false],
+]);
+
+it('update_worker replacing the config needs configure_workers on the server', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, false],
+        [Capability::ConfigureWorkers, ScopeType::Site, new Target('acme', 1, 12), true],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n', 'config' => "[program:x]\nuser=root"])
+        ->assertHasErrors(['not permitted on server 1']);
+    wrkAssertNoWrite(5);
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+
+    // Without config the site grant is enough.
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n'])->assertOk();
+    expect(wrkSent('PUT', '/background-processes/5'))->toBe(['name' => 'n']);
+});
+
+it('update_worker with config is allowed with a server grant', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, false],
+        [Capability::ConfigureWorkers, ScopeType::Server, new Target('acme', 1), true],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n', 'config' => '[program:x]'])->assertOk();
+    expect(wrkSent('PUT', '/background-processes/5'))->toBe(['name' => 'n', 'config' => '[program:x]']);
+});
