@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Tools\DeploySite;
+use App\Mcp\Tools\GetDeploymentLog;
+use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetSite;
+use App\Mcp\Tools\ListDeployments;
 use App\Mcp\Tools\ListOrganizations;
 use App\Mcp\Tools\ListServers;
 use App\Mcp\Tools\ListSites;
@@ -33,5 +37,9 @@ class ForgeServer extends Server
         GetServer::class,
         ListSites::class,
         GetSite::class,
+        GetDeploymentStatus::class,
+        ListDeployments::class,
+        GetDeploymentLog::class,
+        DeploySite::class,
     ];
 }
