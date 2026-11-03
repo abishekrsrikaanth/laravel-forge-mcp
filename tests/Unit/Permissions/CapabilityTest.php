@@ -40,7 +40,7 @@ it('maps capabilities to Forge token scopes', function (Capability $capability, 
     [Capability::RestartServices, ['server:manage-services']],
     [Capability::ManageWorkers, ['server:create-daemons']],
     [Capability::ViewEnv, ['server:view']],
-    [Capability::EditEnv, ['site:manage-environment']],
+    [Capability::EditEnv, ['server:view', 'site:manage-environment']],
     [Capability::RunCommands, ['site:manage-commands']],
     [Capability::ConfigureWorkers, ['server:create-daemons', 'server:delete-daemons']],
     [Capability::ConfigureDeployments, ['site:manage-deploys']],
@@ -74,7 +74,7 @@ it('groups Forge scopes with the capabilities that need them', function () {
         'server:view', 'server:manage-logs', 'site:manage-deploys', 'server:create-daemons',
         'server:manage-services', 'site:manage-environment', 'site:manage-commands', 'server:delete-daemons',
     ])
-        ->and($scopes['server:view'])->toBe([Capability::View, Capability::ViewEnv])
+        ->and($scopes['server:view'])->toBe([Capability::View, Capability::ViewEnv, Capability::EditEnv])
         ->and($scopes['server:delete-daemons'])->toBe([Capability::ConfigureWorkers]);
 });
 

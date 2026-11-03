@@ -86,7 +86,7 @@ enum Capability: string
             self::Deploy, self::ConfigureDeployments => ['site:manage-deploys'],
             self::RestartServices, self::RebootServer => ['server:manage-services'],
             self::ManageWorkers => ['server:create-daemons'],
-            self::EditEnv => ['site:manage-environment'],
+            self::EditEnv => ['server:view', 'site:manage-environment'],
             self::RunCommands, self::MaintenanceMode => ['site:manage-commands'],
             self::ConfigureWorkers => ['server:create-daemons', 'server:delete-daemons'],
         };
