@@ -50,6 +50,14 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /**
+     * Whether the single owner account has been created.
+     */
+    public static function ownerExists(): bool
+    {
+        return static::query()->exists();
+    }
+
+    /**
      * Get the user's initials
      */
     public function initials(): string

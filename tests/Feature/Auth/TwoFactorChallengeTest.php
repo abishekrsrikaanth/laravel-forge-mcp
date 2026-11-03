@@ -20,6 +20,8 @@ class TwoFactorChallengeTest extends TestCase
 
     public function test_two_factor_challenge_redirects_to_login_when_not_authenticated(): void
     {
+        User::factory()->create();
+
         $response = $this->get(route('two-factor.login'));
 
         $response->assertRedirect(route('login'));
