@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Tools\CreateWorker;
+use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
 use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentStatus;
@@ -18,6 +20,10 @@ use App\Mcp\Tools\ListSites;
 use App\Mcp\Tools\ListWorkers;
 use App\Mcp\Tools\RestartNginx;
 use App\Mcp\Tools\RestartPhpFpm;
+use App\Mcp\Tools\RestartWorker;
+use App\Mcp\Tools\StartWorker;
+use App\Mcp\Tools\StopWorker;
+use App\Mcp\Tools\UpdateWorker;
 use Laravel\Mcp\Server;
 
 class ForgeServer extends Server
@@ -51,5 +57,11 @@ class ForgeServer extends Server
         GetWorkerLog::class,
         RestartNginx::class,
         RestartPhpFpm::class,
+        RestartWorker::class,
+        StopWorker::class,
+        StartWorker::class,
+        CreateWorker::class,
+        UpdateWorker::class,
+        DeleteWorker::class,
     ];
 }
