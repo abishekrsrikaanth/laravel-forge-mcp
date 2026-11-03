@@ -4,6 +4,7 @@ use App\Forge\ForgeClient;
 use App\Security\SecretScrubber;
 use App\Security\SiteSecrets;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -125,4 +126,28 @@ it('forServer returns an incomplete set when sites cannot be listed', function (
 
     expect($set->complete)->toBeFalse()
         ->and($set->warnings)->toBe(['Secret scrubbing limited: could not list sites for server 1.']);
+});
+
+it('remember seeds the encrypted cache with every value of every env given', function () {
+    Http::fake();
+
+    SiteSecrets::remember('acme', 9, ['DB_PASSWORD' => 'newPassword123'], ['DB_PASSWORD' => 'oldPassword123', 'API_TOKEN' => 'apiToken12345']);
+
+    $raw = Cache::get('forge-mcp:secrets:acme:9');
+    expect($raw)->toBeString()->not->toContain('Password123')->not->toContain('DB_PASSWORD');
+
+    $set = SiteSecrets::forSite(new ForgeClient('tkn'), 'acme', 1, 9);
+    Http::assertNothingSent();
+    expect((new SecretScrubber)->scrub('newPassword123 oldPassword123 apiToken12345', $set))
+        ->toBe('[REDACTED:DB_PASSWORD] [REDACTED:DB_PASSWORD] [REDACTED:API_TOKEN]');
+});
+
+it('still reads a cache entry in the plain key => value format', function () {
+    Http::fake();
+    Cache::put('forge-mcp:secrets:acme:9', Crypt::encryptString(json_encode(['DB_PASSWORD' => 'legacyPassword1'])), 600);
+
+    $set = SiteSecrets::forSite(new ForgeClient('tkn'), 'acme', 1, 9);
+
+    Http::assertNothingSent();
+    expect((new SecretScrubber)->scrub('legacyPassword1', $set))->toBe('[REDACTED:DB_PASSWORD]');
 });

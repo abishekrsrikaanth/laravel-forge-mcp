@@ -112,6 +112,17 @@ class ForgeClient
         return $this->text($this->sitePath($org, $serverId, $siteId).'/environment', 'content', 'fetch environment');
     }
 
+    /**
+     * The site's .env, or null when Forge's response has no string `content` (absent or null), so a
+     * caller about to rewrite the file can tell "unknown" from "empty".
+     */
+    public function environmentOrNull(string $org, int $serverId, int $siteId): ?string
+    {
+        $value = $this->get($this->sitePath($org, $serverId, $siteId).'/environment', [], 'fetch environment')['content'] ?? null;
+
+        return is_string($value) ? $value : null;
+    }
+
     public function updateEnvironment(string $org, int $serverId, int $siteId, string $contents): void
     {
         $this->send('PUT', $this->sitePath($org, $serverId, $siteId).'/environment', ['environment' => $contents], 'update environment');

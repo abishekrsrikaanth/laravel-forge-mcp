@@ -8,11 +8,11 @@ use App\Forge\ForgeException;
 use App\Mcp\Support\ToolContext;
 use App\Mcp\Support\ToolError;
 use App\Permissions\Capability;
-use App\Security\SecretScrubber;
-use App\Security\SecretSet;
 use App\Security\SiteSecrets;
 use App\Support\EnvFile;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -23,16 +23,24 @@ use Throwable;
 
 /**
  * Edits individual .env keys: fetch the file, merge with EnvFile::apply() (comments and order are
- * kept), write it back and drop the cached secrets for the site.
+ * kept), write it back and re-seed the cached secrets for the site. The read-modify-write runs under
+ * a per-site cache lock so two edits through this tool cannot lose each other's changes.
  *
  * Neither the file nor any value (old or new) may reach the agent, the audit log or the app log:
- * the response and summary list key names only, redactArguments() masks every `set` value, and a
- * failed Forge write is re-thrown with its message scrubbed of the old and new values.
+ * the response and summary list key names only, redactArguments() keeps only known arguments and
+ * masks every `set` value, and a failed write is reported without Forge's (possibly echoing)
+ * detail. edit_env must not imply view_env, so old values are protected as strictly as new ones.
  */
-#[Description('Set or remove individual keys in the .env file of a Forge site. Comments and other keys are kept. Returns the names of the keys added, changed and removed (never values). Changes take effect on the next deployment or config reload.')]
+#[Description('Set or remove individual keys in the .env file of a Forge site. Comments and other keys are kept. Returns the names of the keys added, changed and removed (never values). Changes take effect on the next deployment or config reload. Edits made to the .env outside this tool at the same moment may be overwritten.')]
 #[IsDestructive]
 class SetSiteEnvValues extends ForgeTool
 {
+    private const AUDITED_ARGUMENTS = ['organization', 'server_id', 'site_id', 'set', 'remove'];
+
+    private const LOCK_SECONDS = 30;
+
+    private const LOCK_WAIT_SECONDS = 10;
+
     protected string $name = 'set_site_env_values';
 
     protected function capability(): Capability
@@ -51,8 +59,11 @@ class SetSiteEnvValues extends ForgeTool
         ];
     }
 
+    /** Only known arguments are stored; every `set` value is masked. Anything else could hold a secret. */
     protected function redactArguments(array $args): array
     {
+        $args = array_intersect_key($args, array_flip(self::AUDITED_ARGUMENTS));
+
         if (array_key_exists('set', $args)) {
             $args['set'] = is_array($args['set'])
                 ? array_map(static fn (): string => '[REDACTED]', $args['set'])
@@ -78,32 +89,64 @@ class SetSiteEnvValues extends ForgeTool
                 return $this->siteTarget($ctx, $org, $serverId, $siteId);
             },
             function (ToolContext $ctx) use ($org, $serverId, $siteId, $set, $remove) {
-                $current = $ctx->forge->environment($org, $serverId, $siteId);
-                $change = EnvFile::apply($current, $set, $remove);
-                $site = $this->siteName($ctx, $org, $serverId, $siteId);
-
-                if ($change->added === [] && $change->changed === [] && $change->removed === []) {
-                    $ctx->summary = "No changes to .env for site {$siteId}.";
-
-                    return "No changes to .env for {$site}.";
-                }
-
                 try {
-                    // Forge's optional `cache`/`queues` flags are deliberately not sent (Forge defaults apply).
-                    $ctx->forge->updateEnvironment($org, $serverId, $siteId, $change->contents);
-                } catch (Throwable $e) {
-                    throw $this->scrubbed($e, SecretSet::of($set)->merge(SecretSet::of(EnvFile::parse($current))));
-                } finally {
-                    SiteSecrets::forget($org, $siteId);
+                    return Cache::lock("forge-mcp:env-edit:{$org}:{$siteId}", self::LOCK_SECONDS)->block(
+                        self::LOCK_WAIT_SECONDS,
+                        fn (): string => $this->edit($ctx, $org, $serverId, $siteId, $set, $remove),
+                    );
+                } catch (LockTimeoutException) {
+                    throw new ToolError('Another .env edit for this site is in progress; try again.');
                 }
-
-                $names = static fn (array $keys): string => $keys === [] ? 'none' : implode(', ', $keys);
-                $details = "Added: {$names($change->added)}. Changed: {$names($change->changed)}. Removed: {$names($change->removed)}.";
-                $ctx->summary = "Updated .env for site {$siteId}. {$details}";
-
-                return "Updated .env for {$site}. {$details}";
             },
         );
+    }
+
+    /**
+     * Fetch, merge and write the .env. Must run under the site's edit lock.
+     *
+     * @param  array<string, string>  $set
+     * @param  list<string>  $remove
+     */
+    private function edit(ToolContext $ctx, string $org, int $serverId, int $siteId, array $set, array $remove): string
+    {
+        try {
+            $current = $ctx->forge->environmentOrNull($org, $serverId, $siteId);
+            if ($current === null) {
+                throw new ToolError('Could not read the current .env; refusing to overwrite it.');
+            }
+
+            $change = EnvFile::apply($current, $set, $remove);
+            $site = $this->siteName($ctx, $org, $serverId, $siteId);
+        } catch (ToolError|InvalidArgumentException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw $this->withoutDetail($e);
+        }
+
+        if ($change->added === [] && $change->changed === [] && $change->removed === []) {
+            $ctx->summary = "No changes to .env for site {$siteId}.";
+
+            return "No changes to .env for {$site}.";
+        }
+
+        try {
+            // Forge's optional `cache`/`queues` flags are deliberately not sent (Forge defaults apply).
+            $ctx->forge->updateEnvironment($org, $serverId, $siteId, $change->contents);
+        } catch (Throwable $e) {
+            // The write may or may not have landed: drop the cache so the next scrub refetches.
+            SiteSecrets::forget($org, $siteId);
+
+            throw $this->withoutDetail($e);
+        }
+
+        // Keep both the rotated-out and the new values masked by other tools.
+        SiteSecrets::remember($org, $siteId, EnvFile::parse($change->contents), EnvFile::parse($current));
+
+        $names = static fn (array $keys): string => $keys === [] ? 'none' : implode(', ', $keys);
+        $details = "Added: {$names($change->added)}. Changed: {$names($change->changed)}. Removed: {$names($change->removed)}.";
+        $ctx->summary = "Updated .env for site {$siteId}. {$details}";
+
+        return "Updated .env for {$site}. {$details}";
     }
 
     /**
@@ -158,14 +201,18 @@ class SetSiteEnvValues extends ForgeTool
         return [$values, $keys];
     }
 
-    /** The exception to let guarded() handle, with any old or new .env value scrubbed from its message. */
-    private function scrubbed(Throwable $e, SecretSet $secrets): Throwable
+    /**
+     * The exception to let guarded() handle, without any detail that could echo .env values (which
+     * the scrubber may not recognise: short, numeric or public-looking values). Forge statuses are
+     * kept so guarded() still records a 401; every other Forge message is already fixed text.
+     */
+    private function withoutDetail(Throwable $e): Throwable
     {
-        $message = app(SecretScrubber::class)->scrub($e->getMessage(), $secrets);
-
-        return $e instanceof ForgeException
-            ? new ForgeException($message, $e->status)
-            : new RuntimeException($e::class.': '.$message);
+        return match (true) {
+            $e instanceof ForgeException && $e->status === 422 => new ForgeException('Forge rejected the .env update (422).', 422),
+            $e instanceof ForgeException => $e,
+            default => new RuntimeException($e::class),
+        };
     }
 
     private function siteName(ToolContext $ctx, string $org, int $serverId, int $siteId): string

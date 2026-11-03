@@ -8,6 +8,8 @@ use App\Models\AuditEntry;
 use App\Permissions\Capability;
 use App\Permissions\ScopeType;
 use App\Permissions\Target;
+use App\Security\SecretScrubber;
+use App\Security\SiteSecrets;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 const ENV_FIXTURE = "# App settings\nAPP_NAME=Alpha\nAPP_KEY=base64:oldAppKeyValue1234567890abcdef\n\n# Database\nDB_PASSWORD=old-db-password-9911\nMAIL_FROM=hello@example.com\n";
 
@@ -31,15 +34,15 @@ beforeEach(function () {
  *
  * @param  (Closure(HttpRequest): mixed)|null  $put
  */
-function envFake(string $contents = ENV_FIXTURE, ?Closure $put = null): void
+function envFake(string $contents = ENV_FIXTURE, ?Closure $put = null, ?array $attributes = null): void
 {
     Http::fake([
-        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/environment' => function (HttpRequest $r) use ($contents, $put) {
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/environment' => function (HttpRequest $r) use ($contents, $put, $attributes) {
             if ($r->method() === 'PUT') {
                 return $put !== null ? $put($r) : Http::response('', 200);
             }
 
-            return Http::response(['data' => ['id' => '12', 'type' => 'environment', 'attributes' => ['content' => $contents]]]);
+            return Http::response(['data' => ['id' => '12', 'type' => 'environment', 'attributes' => $attributes ?? ['content' => $contents]]]);
         },
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
             ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1],
@@ -167,24 +170,38 @@ it('new values never appear in the response or audit table', function () use ($e
     expect(implode("\n", $logs->getArrayCopy()))->not->toContain(ENV_NEW_VALUE);
 });
 
-it('a Forge 422 echoing the input is scrubbed of new and old values', function () use ($editEnv) {
+it('a Forge 422 echoing the input is reduced to a fixed message', function () use ($editEnv) {
     envFake(put: fn (HttpRequest $r) => Http::response([
         'message' => 'invalid',
-        'errors' => ['environment' => ['The value '.ENV_NEW_VALUE.' near old-db-password-9911 is invalid.']],
+        'errors' => ['environment' => ['The value '.ENV_NEW_VALUE.' and abc123 near old-db-password-9911 and Alpha is invalid.']],
     ], 422));
     $logs = envCaptureLogs();
     $user = envUser([$editEnv]);
 
     ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, [
-        'server_id' => 1, 'site_id' => 12, 'set' => ['NEW_SECRET' => ENV_NEW_VALUE],
-    ])->assertHasErrors(['Forge rejected the request', '[REDACTED:NEW_SECRET]', '[REDACTED:DB_PASSWORD]'])
+        'server_id' => 1, 'site_id' => 12, 'set' => ['NEW_SECRET' => ENV_NEW_VALUE, 'SHORT' => 'abc123'],
+    ])->assertHasErrors(['Forge rejected the .env update (422).'])
         ->assertDontSee(ENV_NEW_VALUE)
-        ->assertDontSee('old-db-password-9911');
+        ->assertDontSee('abc123')
+        ->assertDontSee('old-db-password-9911')
+        ->assertDontSee('Alpha');
 
     $entry = AuditEntry::query()->sole();
-    expect($entry->outcome)->toBe('error');
-    expect(envAuditDump())->not->toContain(ENV_NEW_VALUE)->not->toContain('old-db-password-9911');
-    expect(implode("\n", $logs->getArrayCopy()))->not->toContain(ENV_NEW_VALUE);
+    expect($entry->outcome)->toBe('error')
+        ->and($entry->summary)->toBe('Forge rejected the .env update (422).');
+    expect(envAuditDump())->not->toContain(ENV_NEW_VALUE)->not->toContain('abc123')->not->toContain('old-db-password-9911');
+    expect(implode("\n", $logs->getArrayCopy()))->not->toContain(ENV_NEW_VALUE)->not->toContain('abc123');
+});
+
+it('other Forge errors keep their status handling', function () use ($editEnv) {
+    envFake(put: fn (HttpRequest $r) => Http::response(['message' => 'abc123'], 401));
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, [
+        'server_id' => 1, 'site_id' => 12, 'set' => ['SHORT' => 'abc123'],
+    ])->assertHasErrors(['Forge rejected the API token (401).'])->assertDontSee('abc123');
+
+    expect($user->forgeConnection->fresh()->last_error)->toContain('401');
 });
 
 it('an unexpected exception carrying the request body leaks no value to the log', function () use ($editEnv) {
@@ -195,15 +212,93 @@ it('an unexpected exception carrying the request body leaks no value to the log'
     $user = envUser([$editEnv]);
 
     ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, [
-        'server_id' => 1, 'site_id' => 12, 'set' => ['GREETING' => ENV_NEW_VALUE],
+        'server_id' => 1, 'site_id' => 12, 'set' => ['GREETING' => ENV_NEW_VALUE, 'SHORT' => 'abc123'],
     ])->assertHasErrors(['Unexpected error while running set_site_env_values'])
-        ->assertDontSee(ENV_NEW_VALUE);
+        ->assertDontSee(ENV_NEW_VALUE)->assertDontSee('abc123');
 
     $all = implode("\n", $logs->getArrayCopy());
-    expect($all)->toContain('Forge MCP tool failed')->toContain('[REDACTED:GREETING]')
+    expect($all)->toContain('Forge MCP tool failed')->toContain('RuntimeException')
+        ->not->toContain('boom')
         ->not->toContain(ENV_NEW_VALUE)
-        ->not->toContain('old-db-password-9911');
-    expect(envAuditDump())->not->toContain(ENV_NEW_VALUE);
+        ->not->toContain('abc123')
+        ->not->toContain('Alpha');
+    expect(envAuditDump())->not->toContain(ENV_NEW_VALUE)->not->toContain('abc123');
+});
+
+it('refuses to write when the current .env cannot be read', function (array $attributes) use ($editEnv) {
+    envFake(attributes: $attributes);
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])
+        ->assertHasErrors(['Could not read the current .env; refusing to overwrite it.']);
+
+    envAssertNoPut();
+})->with([
+    'no content attribute' => [[]],
+    'null content' => [['content' => null]],
+]);
+
+it('an empty .env can still be edited', function () use ($editEnv) {
+    envFake('');
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])->assertOk();
+
+    expect(envPut())->toBe(['environment' => "X=y\n"]);
+});
+
+it('refuses while another edit of the site holds the lock', function () use ($editEnv) {
+    Sleep::fake(syncWithCarbon: true);
+    envFake();
+    $user = envUser([$editEnv]);
+    $lock = Cache::lock('forge-mcp:env-edit:acme:12', 30);
+    expect($lock->get())->toBeTrue();
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])
+        ->assertHasErrors(['Another .env edit for this site is in progress; try again.']);
+
+    envAssertNoPut();
+    $lock->release();
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])->assertOk();
+    expect(Cache::lock('forge-mcp:env-edit:acme:12', 30)->get())->toBeTrue();
+});
+
+it('after an edit the secrets cache masks both old and new values without refetching', function () use ($editEnv) {
+    envFake();
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['DB_PASSWORD' => 'rotated-db-password-2', 'NEW_SECRET' => ENV_NEW_VALUE]])
+        ->assertOk();
+
+    Http::assertSentCount(4); // servers, sites, GET environment, PUT environment: no refetch for scrubbing
+    $set = SiteSecrets::forSite(new ForgeClient(MCP_FORGE_TOKEN), 'acme', 1, 12);
+    $scrubbed = (new SecretScrubber)->scrub('old-db-password-9911 rotated-db-password-2 '.ENV_NEW_VALUE.' base64:oldAppKeyValue1234567890abcdef', $set);
+    expect($scrubbed)->toBe('[REDACTED:DB_PASSWORD] [REDACTED:DB_PASSWORD] [REDACTED:NEW_SECRET] [REDACTED:APP_KEY]');
+    Http::assertSentCount(4);
+});
+
+it('a failed write forgets the secrets cache', function () use ($editEnv) {
+    envFake(put: fn (HttpRequest $r) => Http::response(['message' => 'no'], 422));
+    $user = envUser([$editEnv]);
+    Cache::put('forge-mcp:secrets:acme:12', Crypt::encryptString(json_encode(['STALE_SECRET' => 'stale-cached-secret-value'])), 600);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])
+        ->assertHasErrors();
+
+    expect(Cache::get('forge-mcp:secrets:acme:12'))->toBeNull();
+});
+
+it('audits only allow-listed arguments', function () use ($editEnv) {
+    envFake();
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, [
+        'server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y'], 'remove' => ['MAIL_FROM'], 'contents' => 'DB_PASSWORD='.ENV_NEW_VALUE, 'note' => 'abc123',
+    ])->assertOk();
+
+    expect(AuditEntry::query()->sole()->arguments)->toBe(['server_id' => 1, 'site_id' => 12, 'set' => ['X' => '[REDACTED]'], 'remove' => ['MAIL_FROM']]);
+    expect(envAuditDump())->not->toContain(ENV_NEW_VALUE)->not->toContain('abc123');
 });
 
 it('edit_env alone does not expose get_site_env', function () use ($editEnv) {

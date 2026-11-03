@@ -336,3 +336,15 @@ it('lists events and event output', function () {
         ->and($c->eventOutput('acme', 1, 5))->toBe('evt');
     Http::assertSent(fn ($r) => str_contains(urldecode($r->url()), '/events?') && str_contains(urldecode($r->url()), 'page[size]=7'));
 });
+
+it('environmentOrNull distinguishes a missing environment from an empty one', function (array $attributes, ?string $expected) {
+    fakeOne(SITE.'/environment', Http::response(doc('environments', 1, $attributes)));
+
+    expect(forge()->environmentOrNull('acme', 1, 9))->toBe($expected);
+})->with([
+    'content' => [['content' => 'A=1'], 'A=1'],
+    'empty' => [['content' => ''], ''],
+    'null' => [['content' => null], null],
+    'absent' => [[], null],
+    'not a string' => [['content' => ['x']], null],
+]);

@@ -32,7 +32,7 @@ final class SiteSecrets
     {
         $cached = self::cached($org, $siteId);
         if ($cached !== null) {
-            return SecretSet::of($cached);
+            return $cached;
         }
 
         try {
@@ -41,17 +41,37 @@ final class SiteSecrets
             return SecretSet::incomplete("Secret scrubbing limited: could not read .env for site {$siteId}.");
         }
 
+        self::remember($org, $siteId, $env);
+
+        return SecretSet::of($env);
+    }
+
+    /**
+     * Seed the encrypted cache for a site with every value of every env given (key => value each),
+     * e.g. the old and the new contents after an edit, so rotated-out and new secrets both stay
+     * masked. Earlier envs win the label when two keys share a value.
+     *
+     * @param  array<string, string>  ...$envs
+     */
+    public static function remember(string $org, int $siteId, array ...$envs): void
+    {
+        $pairs = [];
+        foreach ($envs as $env) {
+            foreach ($env as $key => $value) {
+                $pairs[] = [(string) $key, (string) $value];
+            }
+        }
+
         try {
             Cache::put(
                 self::key($org, $siteId),
-                Crypt::encryptString(json_encode($env, JSON_THROW_ON_ERROR)),
+                Crypt::encryptString(json_encode(['v' => 2, 'pairs' => $pairs], JSON_THROW_ON_ERROR)),
                 (int) config('forge-mcp.secrets_cache_ttl', 600),
             );
         } catch (JsonException) {
             // Not valid UTF-8: use it for this call, just don't cache it.
+            self::forget($org, $siteId);
         }
-
-        return SecretSet::of($env);
     }
 
     public static function forServer(ForgeClient $client, string $org, int $serverId): SecretSet
@@ -73,7 +93,7 @@ final class SiteSecrets
         foreach ($siteIds as $siteId) {
             $cached = self::cached($org, $siteId);
             if ($cached !== null) {
-                $set = $set->merge(SecretSet::of($cached));
+                $set = $set->merge($cached);
 
                 continue;
             }
@@ -108,8 +128,8 @@ final class SiteSecrets
         return "forge-mcp:secrets:{$org}:{$siteId}";
     }
 
-    /** @return array<string, string>|null */
-    private static function cached(string $org, int $siteId): ?array
+    /** The cached set for a site: the `pairs` format written by remember(), or a plain key => value map. */
+    private static function cached(string $org, int $siteId): ?SecretSet
     {
         $payload = Cache::get(self::key($org, $siteId));
         if (! is_string($payload)) {
@@ -126,6 +146,17 @@ final class SiteSecrets
             return null;
         }
 
+        if (($env['v'] ?? null) === 2 && is_array($env['pairs'] ?? null)) {
+            $set = SecretSet::empty();
+            foreach ($env['pairs'] as $pair) {
+                if (is_array($pair) && is_string($pair[0] ?? null) && is_string($pair[1] ?? null)) {
+                    $set = $set->merge(SecretSet::of([$pair[0] => $pair[1]]));
+                }
+            }
+
+            return $set;
+        }
+
         $values = [];
         foreach ($env as $key => $value) {
             if (is_string($value)) {
@@ -133,6 +164,6 @@ final class SiteSecrets
             }
         }
 
-        return $values;
+        return SecretSet::of($values);
     }
 }
