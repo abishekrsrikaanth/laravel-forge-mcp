@@ -16,6 +16,9 @@ class ForgeClient
 {
     public const BASE_URL = 'https://forge.laravel.com/api';
 
+    /** Seconds before one Forge HTTP request times out. */
+    public const TIMEOUT_SECONDS = 15;
+
     private const PAGE_SIZE = 100;
 
     private const MAX_PAGES = 20;
@@ -387,7 +390,7 @@ class ForgeClient
         return Http::baseUrl(self::BASE_URL)
             ->withToken($this->token)
             ->acceptJson()
-            ->timeout(15);
+            ->timeout(self::TIMEOUT_SECONDS);
     }
 
     /**

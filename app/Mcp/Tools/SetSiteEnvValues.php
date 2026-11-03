@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Forge\ForgeClient;
 use App\Forge\ForgeException;
 use App\Mcp\Support\ToolContext;
 use App\Mcp\Support\ToolError;
@@ -37,7 +38,8 @@ class SetSiteEnvValues extends ForgeTool
 {
     private const AUDITED_ARGUMENTS = ['organization', 'server_id', 'site_id', 'set', 'remove'];
 
-    private const LOCK_SECONDS = 30;
+    /** Covers the read-modify-write's up to three Forge calls (each bounded by the client timeout) plus margin. */
+    private const LOCK_SECONDS = 3 * ForgeClient::TIMEOUT_SECONDS + 15;
 
     private const LOCK_WAIT_SECONDS = 10;
 

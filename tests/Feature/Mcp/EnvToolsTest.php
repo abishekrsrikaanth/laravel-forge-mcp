@@ -390,3 +390,20 @@ it('does not send the cache or queues flags', function () use ($editEnv) {
 
     expect(array_keys(envPut()))->toBe(['environment']);
 });
+
+it('holds the edit lock for longer than three Forge calls can take', function () use ($editEnv) {
+    $held = null;
+    envFake(put: function () use (&$held) {
+        // Simulate the worst case: up to three Forge calls, each running into the client timeout.
+        Carbon\Carbon::setTestNow(now()->addSeconds(3 * ForgeClient::TIMEOUT_SECONDS));
+        $held = ! Cache::lock('forge-mcp:env-edit:acme:12', 5)->get();
+
+        return Http::response('', 200);
+    });
+    $user = envUser([$editEnv]);
+
+    ForgeServer::actingAs($user)->tool(SetSiteEnvValues::class, ['server_id' => 1, 'site_id' => 12, 'set' => ['X' => 'y']])->assertOk();
+
+    expect($held)->toBeTrue();
+    Carbon\Carbon::setTestNow();
+});
