@@ -111,6 +111,12 @@ it('reads null deployment status when idle', function () {
     expect(forge()->deploymentStatus('acme', 1, 9))->toBe(['status' => null, 'started_at' => null]);
 });
 
+it('reads one deployment by id', function () {
+    fakeOne(SITE.'/deployments/3', Http::response(doc('deployments', 3, ['status' => 'failed-build'])));
+
+    expect(forge()->deployment('acme', 1, 9, 3))->toMatchArray(['id' => 3, 'status' => 'failed-build']);
+});
+
 it('lists deployments with a single page', function () {
     fakeOne(SITE.'/deployments', Http::response(['data' => [res('deployments', 3), res('deployments', 2)]]));
 

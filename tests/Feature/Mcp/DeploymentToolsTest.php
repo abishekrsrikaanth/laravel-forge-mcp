@@ -13,18 +13,19 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
-function deployFakes(array $statuses, string $log = "step 1\nstep 2\n"): void
+function deployFakes(array $statuses, string $log = "step 1\nstep 2\n", ?string $statusEndpoint = 'running', bool $recordFails = false): void
 {
     ForgeClient::flushCache();
     Cache::flush();
     $seq = Http::sequence();
     foreach ($statuses as $status) {
-        $seq->push(['data' => ['attributes' => ['status' => $status, 'started_at' => '2026-11-03T10:00:00Z']]]);
+        $seq->push(['data' => ['id' => '77', 'type' => 'deployments', 'attributes' => ['status' => $status, 'started_at' => '2026-11-03T10:00:00Z']]]);
     }
-    $seq->whenEmpty(Http::response(['data' => ['attributes' => ['status' => end($statuses), 'started_at' => '2026-11-03T10:00:00Z']]]));
+    $seq->whenEmpty(Http::response(['data' => ['id' => '77', 'type' => 'deployments', 'attributes' => ['status' => end($statuses), 'started_at' => '2026-11-03T10:00:00Z']]]));
 
     Http::fake([
-        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/deployments/status' => $seq,
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/deployments/status' => Http::response(['data' => ['attributes' => ['status' => $statusEndpoint, 'started_at' => '2026-11-03T10:00:00Z']]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/deployments/77' => $recordFails ? Http::response(['message' => 'boom'], 500) : $seq,
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/deployments/77/log' => Http::response(['data' => ['attributes' => ['output' => $log]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/deployments*' => fn ($request) => $request->method() === 'POST'
             ? Http::response(['data' => ['id' => '77', 'type' => 'deployments', 'attributes' => ['status' => 'running']]])
@@ -53,7 +54,7 @@ function deployUser(array $grants = []): array
 $args = ['server_id' => 1, 'site_id' => 12];
 
 it('get_deployment_status shows status', function () use ($args) {
-    deployFakes(['running']);
+    deployFakes(['running'], statusEndpoint: 'running');
     [$user] = deployUser();
 
     ForgeServer::actingAs($user)->tool(GetDeploymentStatus::class, $args)
@@ -88,6 +89,49 @@ it('deploy_site times out with follow-up message', function () use ($args) {
     ForgeServer::actingAs($user)->tool(DeploySite::class, $args)
         ->assertOk()
         ->assertSee('Deployment 77 is still running. Call get_deployment_status to check progress.');
+
+    Sleep::assertSleptTimes(6);
+    Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/deployments/77/log'));
+});
+
+it('deploy_site ignores a stale site-level finished status', function () use ($args) {
+    Sleep::fake();
+    deployFakes(['running', 'running', 'finished'], statusEndpoint: 'finished');
+    [$user] = deployUser();
+
+    ForgeServer::actingAs($user)->tool(DeploySite::class, $args)
+        ->assertOk()->assertSee('Deployment 77 finished.');
+
+    Sleep::assertSleptTimes(2);
+});
+
+it('deploy_site reports failed-build', function () use ($args) {
+    Sleep::fake();
+    deployFakes(['failed-build'], "composer failed\n");
+    [$user] = deployUser();
+
+    ForgeServer::actingAs($user)->tool(DeploySite::class, $args)
+        ->assertOk()->assertSee(['Deployment 77 failed-build.', 'composer failed']);
+});
+
+it('deploy_site keeps the deployment id when checking progress fails', function () use ($args) {
+    Sleep::fake();
+    deployFakes(['running'], recordFails: true);
+    [$user] = deployUser();
+
+    ForgeServer::actingAs($user)->tool(DeploySite::class, $args)
+        ->assertOk()
+        ->assertSee(['Deployment 77 was started, but checking its progress failed', 'Call get_deployment_status or get_deployment_log.']);
+});
+
+it('get_deployment_log is denied on a site where view_logs is revoked (view still allowed)', function () use ($args) {
+    deployFakes(['finished']);
+    $user = mcpOwner(['acme']);
+    $token = mcpToken($user, [[Capability::ViewLogs, ScopeType::Site, new Target('acme', 1, 12), false]]);
+    mcpActAs($user, $token);
+
+    ForgeServer::actingAs($user)->tool(GetDeploymentLog::class, $args + ['deployment_id' => 77])
+        ->assertHasErrors(['not permitted']);
 });
 
 it('deploy_site denied on a site when only another site is allowed', function () use ($args) {

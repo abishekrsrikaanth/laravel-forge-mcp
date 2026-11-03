@@ -83,6 +83,12 @@ class ForgeClient
         return ['status' => $status['status'] ?? null, 'started_at' => $status['started_at'] ?? null];
     }
 
+    /** @return array<string, mixed> */
+    public function deployment(string $org, int $serverId, int $siteId, int $deploymentId): array
+    {
+        return $this->get($this->sitePath($org, $serverId, $siteId)."/deployments/{$deploymentId}", [], 'fetch deployment');
+    }
+
     /** @return list<array<string, mixed>> */
     public function deployments(string $org, int $serverId, int $siteId, int $limit = 10): array
     {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Mcp\Support\Poller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
@@ -57,4 +58,21 @@ it('defaults to the configured poll timeout', function () {
     Poller::until(fn () => null, fn () => false);
 
     Sleep::assertSequence([Sleep::for(1)->seconds(), Sleep::for(2)->seconds()]);
+});
+
+it('stops on the wall-clock deadline when fetches consume time', function () {
+    Carbon::setTestNow('2026-01-01 00:00:00');
+    Sleep::fake(syncWithCarbon: true);
+    $calls = 0;
+
+    $out = Poller::until(function () use (&$calls) {
+        $calls++;
+        Carbon::setTestNow(Carbon::now()->addSeconds(15)); // slow Forge call
+
+        return 'running';
+    }, fn () => false, 20);
+
+    expect($out['done'])->toBeFalse()
+        ->and($calls)->toBe(2);
+    Carbon::setTestNow();
 });

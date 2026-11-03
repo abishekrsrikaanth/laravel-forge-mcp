@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Forge\ForgeException;
 use App\Mcp\Support\OutputTail;
 use App\Mcp\Support\Poller;
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Support\ToolError;
 use App\Permissions\Capability;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -47,25 +49,33 @@ class DeploySite extends ForgeTool
             fn (ToolContext $ctx) => $this->siteTarget($ctx, $org, $serverId, $siteId),
             function (ToolContext $ctx) use ($org, $serverId, $siteId) {
                 $deployment = $ctx->forge->deploy($org, $serverId, $siteId);
-                $deploymentId = $deployment['id'] ?? null;
+                $deploymentId = (int) ($deployment['id'] ?? 0);
 
-                $poll = Poller::until(
-                    fn () => $ctx->forge->deploymentStatus($org, $serverId, $siteId),
-                    fn (array $status) => in_array($status['status'] ?? null, self::FINISHED, true),
-                );
-
-                $status = $poll['result']['status'] ?? null;
-
-                if (! $poll['done']) {
-                    $ctx->summary = "Deployed site {$siteId}: ".($status ?? 'pending');
-
-                    return 'Deployment '.($deploymentId ?? '-').' is still '.($status ?? 'pending').'. Call get_deployment_status to check progress.';
+                if ($deploymentId === 0) {
+                    throw new ToolError('Forge accepted the deployment but returned no deployment id. Call list_deployments to find it.');
                 }
 
-                $ctx->summary = "Deployed site {$siteId}: {$status}";
-                $log = $deploymentId !== null
-                    ? $ctx->forge->deploymentLog($org, $serverId, $siteId, (int) $deploymentId)
-                    : '';
+                // Once the deployment has started, a failure must still tell the agent its id (no blind redeploy).
+                // The audit row is `success` for the trigger; the failure is only reported in the output.
+                try {
+                    $poll = Poller::until(
+                        fn () => $ctx->forge->deployment($org, $serverId, $siteId, $deploymentId),
+                        fn (array $d) => in_array($d['status'] ?? null, self::FINISHED, true),
+                    );
+
+                    $status = $poll['result']['status'] ?? null;
+                    $ctx->summary = "Deployed site {$siteId}: ".($status ?? 'pending');
+
+                    if (! $poll['done']) {
+                        return "Deployment {$deploymentId} is still ".($status ?? 'pending').'. Call get_deployment_status to check progress.';
+                    }
+
+                    $log = $ctx->forge->deploymentLog($org, $serverId, $siteId, $deploymentId);
+                } catch (ForgeException $e) {
+                    $ctx->summary = "Deployed site {$siteId}: started, progress check failed";
+
+                    return "Deployment {$deploymentId} was started, but checking its progress failed: {$e->agentMessage()}. Call get_deployment_status or get_deployment_log.";
+                }
 
                 return "Deployment {$deploymentId} {$status}.\n".($log === '' ? 'The deployment log is empty.' : OutputTail::tail($log, self::LOG_LINES));
             },
