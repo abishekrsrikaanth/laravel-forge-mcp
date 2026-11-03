@@ -247,11 +247,18 @@ it('resets deployment status', function () {
     assertSentTo('DELETE', SITE.'/deployments/status');
 });
 
-it('sets push to deploy', function () {
-    fakeOne(SITE);
+it('sets push to deploy via the dedicated endpoint', function () {
+    Http::fake(['*' => Http::response('', 202)]);
+    $c = forge();
 
-    forge()->setPushToDeploy('acme', 1, 9, true);
-    assertSentTo('PUT', 'https://forge.laravel.com/api/orgs/acme/servers/1/sites/9', ['push_to_deploy' => true]);
+    $c->setPushToDeploy('acme', 1, 9, true);
+    assertSentTo('POST', SITE.'/deployments/push-to-deploy');
+
+    $c->setPushToDeploy('acme', 1, 9, false);
+    assertSentTo('DELETE', SITE.'/deployments/push-to-deploy');
+
+    Http::assertSentCount(2);
+    Http::assertNotSent(fn ($r) => $r->method() === 'PUT');
 });
 
 it('reboots the server and other services', function () {

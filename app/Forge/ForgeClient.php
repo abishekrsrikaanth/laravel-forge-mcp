@@ -206,10 +206,15 @@ class ForgeClient
         $this->send('DELETE', $this->sitePath($org, $serverId, $siteId).'/deployments/status', [], 'reset deployment status');
     }
 
-    /** Requires the Forge `site:create` scope. */
+    /** Requires the Forge `site:manage-deploys` scope. */
     public function setPushToDeploy(string $org, int $serverId, int $siteId, bool $enabled): void
     {
-        $this->send('PUT', $this->sitePath($org, $serverId, $siteId), ['push_to_deploy' => $enabled], 'update push to deploy');
+        $this->send(
+            $enabled ? 'POST' : 'DELETE',
+            $this->sitePath($org, $serverId, $siteId).'/deployments/push-to-deploy',
+            [],
+            'update push to deploy',
+        );
     }
 
     public function serverAction(string $org, int $serverId, string $action): void
