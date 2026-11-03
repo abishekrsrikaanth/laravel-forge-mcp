@@ -17,8 +17,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 #[IsDestructive]
 class RestartPhpFpm extends ForgeTool
 {
-    /** Forge's PhpVersion values. */
-    private const VERSIONS = ['php56', 'php70', 'php71', 'php72', 'php73', 'php74', 'php80', 'php81', 'php82', 'php83', 'php84', 'php85'];
+    /** Forge's PhpVersion enum, exactly. */
+    private const VERSIONS = ['php5', 'php56-old', 'php56', 'php70', 'php71', 'php72', 'php73', 'php74', 'php80', 'php81', 'php82', 'php83', 'php84', 'php85'];
 
     protected string $name = 'restart_php_fpm';
 
@@ -62,7 +62,7 @@ class RestartPhpFpm extends ForgeTool
                     throw new ToolError("Invalid action '{$action}'. Use reload or restart.");
                 }
 
-                if ($explicit !== null && (preg_match('/^php\d{2,3}$/', $explicit) !== 1 || ! in_array($explicit, self::VERSIONS, true))) {
+                if ($explicit !== null && ! in_array($explicit, self::VERSIONS, true)) {
                     throw new ToolError('Invalid PHP version. Use one of: '.implode(', ', self::VERSIONS).'.');
                 }
 
@@ -70,8 +70,12 @@ class RestartPhpFpm extends ForgeTool
                     ?? ($siteId !== null ? $this->stringOrNull($ctx->forge->site($org, $siteId)['php_version'] ?? null) : null)
                     ?? $this->serverVersion($ctx, $org, $serverId);
 
-                if ($version === null || ! in_array($version, self::VERSIONS, true)) {
+                if ($version === null) {
                     throw new ToolError('Could not determine the PHP version; pass version explicitly (e.g. php84).');
+                }
+
+                if (! in_array($version, self::VERSIONS, true)) {
+                    throw new ToolError("PHP version '{$version}' reported by Forge is not supported; pass version explicitly.");
                 }
 
                 $ctx->forge->phpAction($org, $serverId, $action === 'restart' ? 'reboot' : 'reload', $version);

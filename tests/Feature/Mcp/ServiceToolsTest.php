@@ -20,9 +20,13 @@ function svcFakes(): void
         'forge.laravel.com/api/orgs/acme/servers/1/services/*' => Http::response('', 202),
         'forge.laravel.com/api/orgs/acme/sites/12' => Http::response(['data' => ['id' => '12', 'type' => 'sites', 'attributes' => ['name' => 'alpha.test', 'php_version' => 'php83']]]),
         'forge.laravel.com/api/orgs/acme/sites/99' => Http::response(['data' => ['id' => '99', 'type' => 'sites', 'attributes' => ['name' => 'nophp.test']]]),
+        'forge.laravel.com/api/orgs/acme/sites/77' => Http::response(['data' => ['id' => '77', 'type' => 'sites', 'attributes' => ['name' => 'old.test', 'php_version' => 'php56-old']]]),
+        'forge.laravel.com/api/orgs/acme/sites/78' => Http::response(['data' => ['id' => '78', 'type' => 'sites', 'attributes' => ['name' => 'weird.test', 'php_version' => 'php99']]]),
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
             ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1],
             ['id' => 99, 'name' => 'nophp.test', 'server_id' => 1],
+            ['id' => 77, 'name' => 'old.test', 'server_id' => 1],
+            ['id' => 78, 'name' => 'weird.test', 'server_id' => 1],
         ])),
         'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [
             ['id' => 1, 'name' => 'web-1', 'php_version' => 'php84'],
@@ -188,4 +192,33 @@ it('restart_nginx denied on another server', function () {
 
     ForgeServer::actingAs($user)->tool(RestartNginx::class, ['server_id' => 1])
         ->assertHasErrors(['not permitted']);
+});
+
+it('restart_php_fpm restarts a site on php56-old', function () {
+    svcFakes();
+    $user = svcUser();
+
+    ForgeServer::actingAs($user)->tool(RestartPhpFpm::class, ['server_id' => 1, 'site_id' => 77])
+        ->assertOk()->assertSee('PHP-FPM php56-old reload queued');
+
+    expect(svcPosted('/servers/1/services/php/actions'))->toBe(['action' => 'reload', 'version' => 'php56-old']);
+});
+
+it('restart_php_fpm accepts explicit php5 and php56-old', function (string $version) {
+    svcFakes();
+    $user = svcUser();
+
+    ForgeServer::actingAs($user)->tool(RestartPhpFpm::class, ['server_id' => 1, 'version' => $version])->assertOk();
+
+    expect(svcPosted('/servers/1/services/php/actions'))->toBe(['action' => 'reload', 'version' => $version]);
+})->with(['php5', 'php56-old']);
+
+it('restart_php_fpm reports an unsupported detected version', function () {
+    svcFakes();
+    $user = svcUser();
+
+    ForgeServer::actingAs($user)->tool(RestartPhpFpm::class, ['server_id' => 1, 'site_id' => 78])
+        ->assertHasErrors(["PHP version 'php99' reported by Forge is not supported; pass version explicitly."]);
+
+    Http::assertNotSent(fn ($r) => $r->method() === 'POST');
 });
