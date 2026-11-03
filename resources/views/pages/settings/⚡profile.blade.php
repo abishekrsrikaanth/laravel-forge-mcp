@@ -35,8 +35,10 @@ new #[Title('Profile settings')] class extends Component {
 
         $user->fill($validated);
 
+        // Forge MCP has a single owner and mails to the log by default: un-verifying the address on
+        // change would lock the owner out of the dashboard (it requires a verified email).
         if ($user->isDirty('email')) {
-            $user->email_verified_at = null;
+            $user->email_verified_at = now();
         }
 
         $user->save();
@@ -66,13 +68,6 @@ new #[Title('Profile settings')] class extends Component {
     public function hasUnverifiedEmail(): bool
     {
         return Auth::user() instanceof MustVerifyEmail && ! Auth::user()->hasVerifiedEmail();
-    }
-
-    #[Computed]
-    public function showDeleteUser(): bool
-    {
-        return ! Auth::user() instanceof MustVerifyEmail
-            || (Auth::user() instanceof MustVerifyEmail && Auth::user()->hasVerifiedEmail());
     }
 }; ?>
 
@@ -116,9 +111,5 @@ new #[Title('Profile settings')] class extends Component {
 
             </div>
         </form>
-
-        @if ($this->showDeleteUser)
-            <livewire:pages::settings.delete-user-form />
-        @endif
     </x-pages::settings.layout>
 </section>
