@@ -9,6 +9,7 @@ use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
 use App\Mcp\Tools\GetCommandResult;
 use App\Mcp\Tools\GetDeploymentLog;
+use App\Mcp\Tools\GetDeploymentScript;
 use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetSite;
@@ -20,13 +21,17 @@ use App\Mcp\Tools\ListOrganizations;
 use App\Mcp\Tools\ListServers;
 use App\Mcp\Tools\ListSites;
 use App\Mcp\Tools\ListWorkers;
+use App\Mcp\Tools\RebootServer;
+use App\Mcp\Tools\ResetDeploymentState;
 use App\Mcp\Tools\RestartNginx;
 use App\Mcp\Tools\RestartPhpFpm;
 use App\Mcp\Tools\RestartWorker;
 use App\Mcp\Tools\RunSiteCommand;
+use App\Mcp\Tools\SetQuickDeploy;
 use App\Mcp\Tools\SetSiteEnvValues;
 use App\Mcp\Tools\StartWorker;
 use App\Mcp\Tools\StopWorker;
+use App\Mcp\Tools\UpdateDeploymentScript;
 use App\Mcp\Tools\UpdateWorker;
 use Laravel\Mcp\Server;
 
@@ -71,5 +76,10 @@ class ForgeServer extends Server
         SetSiteEnvValues::class,
         RunSiteCommand::class,
         GetCommandResult::class,
+        GetDeploymentScript::class,
+        UpdateDeploymentScript::class,
+        SetQuickDeploy::class,
+        ResetDeploymentState::class,
+        RebootServer::class,
     ];
 }
