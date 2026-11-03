@@ -54,7 +54,7 @@ Start a session and ask, for example:
 - "Read the last 100 lines of the application log of `<site>`."
 - "Diagnose the last failed deploy of `<site>`." (uses the `diagnose_failed_deploy` prompt if your client supports prompts)
 
-Then open **Audit log** in the dashboard: every call the agent made is there, with its outcome.
+Then open **Audit log** in the dashboard: every permission-checked call the agent made is there, with its outcome.
 
 ## Next steps
 

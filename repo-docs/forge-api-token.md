@@ -20,7 +20,7 @@ To change scopes later, create a new Forge token with the new scopes and use **R
 | `restart_services` | action | off | `server:manage-services` |
 | `manage_workers` | action | off | `server:create-daemons` |
 | `view_env` | risky | off | `server:view` |
-| `edit_env` | risky | off | `site:manage-environment` |
+| `edit_env` | risky | off | `server:view`, `site:manage-environment` |
 | `run_commands` | risky | off | `site:manage-commands` |
 | `configure_workers` | risky | off | `server:create-daemons`, `server:delete-daemons` |
 | `configure_deployments` | risky | off | `site:manage-deploys` |
@@ -31,7 +31,7 @@ The same information by scope (this is what the **Forge connection** page shows 
 
 | Forge scope | Needed by |
 |---|---|
-| `server:view` | `view`, `view_env` |
+| `server:view` | `view`, `view_env`, `edit_env` |
 | `server:manage-logs` | `view_logs` |
 | `site:manage-deploys` | `view_logs`, `deploy`, `configure_deployments` |
 | `server:create-daemons` | `view_logs`, `manage_workers`, `configure_workers` |
@@ -40,7 +40,7 @@ The same information by scope (this is what the **Forge connection** page shows 
 | `site:manage-commands` | `run_commands`, `maintenance_mode` |
 | `server:delete-daemons` | `configure_workers` |
 
-Forge MCP needs no scopes beyond these. Always include `server:view`: besides `view`, secret scrubbing reads each site's `.env` with it. Without it, tool output carries a `Warning: Secret scrubbing limited: …` line and only pattern-based scrubbing applies.
+Forge MCP needs no scopes beyond these. Always include `server:view`: besides `view`, `view_env` and `edit_env` (which reads the current `.env` before changing it), secret scrubbing reads each site's `.env` with it. Without it, tool output carries a `Warning: Secret scrubbing limited: …` line and only pattern-based scrubbing applies.
 
 ## Minimum-scope recipes
 

@@ -1,6 +1,6 @@
 # Forge MCP documentation
 
-Forge MCP is a self-hosted Laravel app that lets AI coding agents (Claude Code, Cursor and any other MCP client) operate your [Laravel Forge](https://forge.laravel.com) servers and sites over the Model Context Protocol. It runs on your own server, holds your Forge API token encrypted, and gives each agent its own access token with permissions you control. Every tool result is scrubbed of known secrets, and every call is written to an audit log.
+Forge MCP is a self-hosted Laravel app that lets AI coding agents (Claude Code, Cursor and any other MCP client) operate your [Laravel Forge](https://forge.laravel.com) servers and sites over the Model Context Protocol. It runs on your own server, holds your Forge API token encrypted, and gives each agent its own access token with permissions you control. Every tool result is scrubbed of known secrets, and every permission-checked tool call (allowed, denied or failed) is written to an audit log.
 
 ## Who it is for
 

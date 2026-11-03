@@ -29,7 +29,7 @@ In Forge MCP, tools work inside a Forge **organization** and take an optional `o
 - **One Forge token, stored on your server.** The Forge API token is pasted once into the dashboard and stored encrypted. Agents and developer machines only get Forge MCP access tokens, which can be revoked individually.
 - **Per-token permissions.** Each access token has its own capabilities, read-only by default, with overrides per organization, server and site. Tools a token cannot use are not listed.
 - **Secret scrubbing.** Every tool result is scrubbed of known `.env` values and common token formats; only `get_site_env`, behind its own `view_env` capability, returns raw values.
-- **Audit log.** Every call, including denied ones, is recorded in the dashboard.
+- **Audit log.** Every permission-checked tool call (allowed, denied or failed) is recorded in the dashboard.
 
 ## Switching
 

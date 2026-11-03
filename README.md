@@ -11,7 +11,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 - 38 MCP tools covering organizations, servers, sites, deployments, logs, queue workers and daemons, `.env` files, site commands, deployment scripts, scheduled jobs, server events, service restarts and maintenance mode.
 - A `diagnose_failed_deploy` prompt for a guided, read-only post-mortem of the latest deployment.
 - Per-token permissions with 12 independent capabilities, plus overrides per organization, server and site.
-- Secret scrubbing of every tool result, and a full audit log of every call (including denied ones).
+- Secret scrubbing of every tool result, and an audit log of every permission-checked tool call (allowed, denied or failed).
 - A small web dashboard: first-run setup, Forge connection, access tokens with copy-paste client snippets, per-token permission editor, and an audit log viewer.
 - Self-hosted and open source (MIT). Your Forge token is stored encrypted and never leaves your server.
 
@@ -89,7 +89,7 @@ In Forge, create an API token and select only the scopes you need. The table sho
 | `restart_services` | action | off | Restart services such as PHP, Nginx and databases. | `server:manage-services` |
 | `manage_workers` | action | off | Restart, start and stop existing queue workers. | `server:create-daemons` |
 | `view_env` | risky | off | Read the .env file, including secrets. | `server:view` |
-| `edit_env` | risky | off | Change the .env file. | `site:manage-environment` |
+| `edit_env` | risky | off | Change the .env file. | `server:view`, `site:manage-environment` |
 | `run_commands` | risky | off | Run arbitrary commands in a site directory. | `site:manage-commands` |
 | `configure_workers` | risky | off | Create, change and delete background processes (runs arbitrary commands, optionally as root). | `server:create-daemons`, `server:delete-daemons` |
 | `configure_deployments` | risky | off | Change the deployment script and quick deploy. | `site:manage-deploys` |

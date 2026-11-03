@@ -20,7 +20,7 @@ Forge MCP holds a Forge API token and exposes Forge operations to AI agents, so 
 - MCP access tokens are hashed at rest, shown once, and can be revoked at any time. Each token has its own permissions, locked down to read-only by default, with overrides per organization, server and site.
 - Server-wide actions (service restarts, reboot) cannot be granted for a single site.
 - Tool output is scrubbed of known secrets; only the explicit `view_env` capability returns raw `.env` values.
-- Every tool call, including denied ones, is written to the audit log.
+- Every permission-checked tool call (allowed, denied or failed) is written to the audit log.
 - Setup is available once, until the owner account exists.
 
 **Out of scope**

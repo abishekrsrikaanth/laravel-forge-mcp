@@ -6,10 +6,10 @@ Forge MCP holds a Forge API token and exposes Forge operations to AI agents. It 
 
 **What Forge MCP protects against**
 
-- An agent doing more than you allowed: every call is checked against the token's [permissions](permissions.md) on the exact organization, server and site, and tools the token cannot use are not even listed.
+- An agent doing more than you allowed: every call is checked against the token's [permissions](permissions.md) on the exact organization, server and site, and a tool is listed only when its capability is allowed somewhere for the token.
 - An agent leaking secrets into its context, chat transcript or logs: tool output is scrubbed of known secrets and common token formats.
 - An agent (or anyone holding an access token) obtaining your Forge API token: it is never returned by any tool, and is removed from all output, error messages and audit entries.
-- Not knowing what happened: every call that reaches the permission check is written to the audit log, including denied and failed calls.
+- Not knowing what happened: every permission-checked tool call (allowed, denied or failed) is written to the audit log.
 
 **Out of scope**
 
@@ -117,7 +117,9 @@ How arguments are protected:
 - `set_site_env_values` stores only the key names of `set` (every value becomes `[REDACTED]`) and `remove`; `enable_maintenance_mode` stores its bypass `secret` as `[REDACTED]`. Both keep only their known arguments.
 - Each string is cut to 4,000 characters (`…[truncated]`); if all arguments together exceed 16 KB of JSON, they are replaced by `{"_truncated": true}` plus the organization and id arguments.
 
-Not recorded: calls rejected before the permission check because arguments were malformed or missing, and calls without a valid access token or Forge connection.
+Not recorded: calls rejected before the permission check because arguments were malformed or missing (including an omitted or ambiguous `organization`), and calls without a valid access token or Forge connection.
+
+Secrets typed inline in an argument (for example a password in a `run_site_command` command) that are not in the site's `.env` are only masked if they match one of the [patterns](#2-patterns).
 
 Entries are kept for `FORGE_MCP_AUDIT_RETENTION_DAYS` (90 by default) and pruned daily by the scheduler. Only the owner can see them, in the dashboard's **Audit log**.
 
