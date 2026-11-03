@@ -240,6 +240,27 @@ abstract class ForgeTool extends Tool
         throw new ToolError("Site {$siteId} is not on server {$serverId}.");
     }
 
+    /**
+     * A server target whose id is verified against the (cached) server list of the organization.
+     * Use this for every server-level tool that takes a server id from the agent.
+     *
+     * @throws ToolError|ForgeException
+     */
+    protected function serverTarget(ToolContext $ctx, string $org, int $serverId): Target
+    {
+        if (! $ctx->connection->exposes($org)) {
+            throw new ToolDenied("Organization '{$org}' is not available to this MCP server.", new Target($org, $serverId));
+        }
+
+        foreach ($ctx->forge->servers($org) as $server) {
+            if ((int) ($server['id'] ?? 0) === $serverId) {
+                return new Target($org, $serverId);
+            }
+        }
+
+        throw new ToolError("Server {$serverId} is not in organization {$org}.");
+    }
+
     protected function accessToken(Request $request): ?PersonalAccessToken
     {
         $user = $request->user();

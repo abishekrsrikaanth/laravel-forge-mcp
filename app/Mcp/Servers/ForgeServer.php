@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Tools\GetServer;
+use App\Mcp\Tools\GetSite;
 use App\Mcp\Tools\ListOrganizations;
+use App\Mcp\Tools\ListServers;
+use App\Mcp\Tools\ListSites;
 use Laravel\Mcp\Server;
 
 class ForgeServer extends Server
@@ -25,5 +29,9 @@ class ForgeServer extends Server
 
     protected array $tools = [
         ListOrganizations::class,
+        ListServers::class,
+        GetServer::class,
+        ListSites::class,
+        GetSite::class,
     ];
 }

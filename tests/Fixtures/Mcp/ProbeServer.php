@@ -14,6 +14,7 @@ class ProbeServer extends Server
         ListOrganizations::class,
         DeployProbe::class,
         SiteProbe::class,
+        ServerProbe::class,
         LeakProbe::class,
     ];
 }
