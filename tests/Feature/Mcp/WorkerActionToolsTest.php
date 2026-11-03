@@ -24,6 +24,8 @@ beforeEach(function () {
     Http::fake([
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/5/actions' => Http::response('', 202),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/5' => Http::response(['data' => $worker(5, '/home/forge/alpha.test/current')]),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/9' => Http::response(['data' => $worker(9, '/home/forge')]),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/6' => Http::response(['data' => $worker(6, '/opt/other')]),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/7' => Http::response(['data' => $worker(7, '/home/forge/beta.test')]),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes' => Http::response(['data' => ['id' => '20', 'type' => 'background-processes', 'attributes' => ['command' => 'php artisan queue:work']]], 201),
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
@@ -42,6 +44,11 @@ function wrkUser(array $grants): object
     mcpActAs($user, mcpToken($user, $grants));
 
     return $user;
+}
+
+function wrkAssertNoWrite(int $workerId): void
+{
+    Http::assertNotSent(fn ($r) => str_contains($r->url(), "/background-processes/{$workerId}") && $r->method() !== 'GET');
 }
 
 function wrkSent(string $method, string $suffix): ?array
@@ -86,6 +93,7 @@ it('manage_workers on site A doesn\'t allow a worker on site B', function () {
         ->assertHasErrors(['not permitted']);
 
     expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+    wrkAssertNoWrite(7);
 });
 
 it('create_worker posts defaults and the name defaults to the command', function () use ($configure) {
@@ -134,9 +142,67 @@ it('create_worker with site_id needs configure_workers on that site', function (
 
     ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'site_id' => 12])
         ->assertHasErrors(['not permitted']);
+    Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+
     ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'site_id' => 13])
         ->assertOk();
 });
+
+it('create_worker rejects a site that is not on the server and does not post', function () use ($configure) {
+    $user = wrkUser([$configure]);
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'site_id' => 99])
+        ->assertHasErrors(['Site 99 is not on server 1.']);
+
+    Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+});
+
+it('a worker spanning several sites needs permission on every candidate site', function (string $tool, string $method, Capability $cap) {
+    // Worker 9 lives in /home/forge, so sites 12 and 13 are both candidates.
+    $user = wrkUser([
+        [$cap, ScopeType::Global, new Target, true],
+        [$cap, ScopeType::Site, new Target('acme', 1, 13), false],
+    ]);
+
+    ForgeServer::actingAs($user)->tool($tool, ['server_id' => 1, 'worker_id' => 9])
+        ->assertHasErrors(['not permitted']);
+
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+    wrkAssertNoWrite(9);
+})->with([
+    [RestartWorker::class, 'POST', Capability::ManageWorkers],
+    [StopWorker::class, 'POST', Capability::ManageWorkers],
+    [StartWorker::class, 'POST', Capability::ManageWorkers],
+    [DeleteWorker::class, 'DELETE', Capability::ConfigureWorkers],
+]);
+
+it('update_worker on a multi-site worker is denied when any candidate site is denied', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, true],
+        [Capability::ConfigureWorkers, ScopeType::Site, new Target('acme', 1, 12), false],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 9, 'name' => 'n'])
+        ->assertHasErrors(['not permitted']);
+    wrkAssertNoWrite(9);
+});
+
+it('a worker with no candidate site requires server-level permission', function (string $tool, Capability $cap) {
+    $user = wrkUser([
+        [$cap, ScopeType::Global, new Target, true],
+        [$cap, ScopeType::Server, new Target('acme', 1), false],
+    ]);
+
+    ForgeServer::actingAs($user)->tool($tool, ['server_id' => 1, 'worker_id' => 6, 'name' => 'n'])
+        ->assertHasErrors(['not permitted']);
+
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+    wrkAssertNoWrite(6);
+})->with([
+    [RestartWorker::class, Capability::ManageWorkers],
+    [DeleteWorker::class, Capability::ConfigureWorkers],
+    [UpdateWorker::class, Capability::ConfigureWorkers],
+]);
 
 it('create_worker arguments are audited', function () use ($configure) {
     $user = wrkUser([$configure]);
@@ -156,6 +222,14 @@ it('update_worker sends name and config without echoing the config', function ()
 
     expect(wrkSent('PUT', '/background-processes/5'))->toBe(['name' => 'renamed', 'config' => '[program:x] command=foo']);
     expect(AuditEntry::query()->latest('id')->first()->arguments)->toMatchArray(['config' => '[program:x] command=foo']);
+});
+
+it('update_worker requires a name', function () use ($configure) {
+    $user = wrkUser([$configure]);
+
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => ''])->assertHasErrors();
+
+    wrkAssertNoWrite(5);
 });
 
 it('update_worker without config sends only the name', function () use ($configure) {
@@ -178,6 +252,7 @@ it('delete_worker deletes and is denied across sites', function () {
 
     ForgeServer::actingAs($user)->tool(DeleteWorker::class, ['server_id' => 1, 'worker_id' => 7])
         ->assertHasErrors(['not permitted']);
+    wrkAssertNoWrite(7);
 });
 
 it('worker tools are hidden for a fresh token', function () {
@@ -186,4 +261,6 @@ it('worker tools are hidden for a fresh token', function () {
     foreach ([RestartWorker::class, StopWorker::class, StartWorker::class, CreateWorker::class, UpdateWorker::class, DeleteWorker::class] as $tool) {
         ForgeServer::actingAs($user)->tool($tool, ['server_id' => 1, 'worker_id' => 5, 'command' => 'x', 'name' => 'n'])->assertHasErrors();
     }
+
+    Http::assertNothingSent();
 });
