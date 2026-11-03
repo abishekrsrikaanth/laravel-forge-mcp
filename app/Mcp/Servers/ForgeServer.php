@@ -9,10 +9,13 @@ use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetSite;
+use App\Mcp\Tools\GetSiteLog;
+use App\Mcp\Tools\GetWorkerLog;
 use App\Mcp\Tools\ListDeployments;
 use App\Mcp\Tools\ListOrganizations;
 use App\Mcp\Tools\ListServers;
 use App\Mcp\Tools\ListSites;
+use App\Mcp\Tools\ListWorkers;
 use Laravel\Mcp\Server;
 
 class ForgeServer extends Server
@@ -41,5 +44,8 @@ class ForgeServer extends Server
         ListDeployments::class,
         GetDeploymentLog::class,
         DeploySite::class,
+        GetSiteLog::class,
+        ListWorkers::class,
+        GetWorkerLog::class,
     ];
 }

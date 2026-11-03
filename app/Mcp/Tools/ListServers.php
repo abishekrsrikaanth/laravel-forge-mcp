@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Tools\Concerns\FiltersItemsByPermission;
 use App\Permissions\Capability;
 use App\Permissions\PermissionEngine;
 use App\Permissions\Target;
@@ -18,6 +19,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 #[IsReadOnly]
 class ListServers extends ForgeTool
 {
+    use FiltersItemsByPermission;
+
     protected string $name = 'list_servers';
 
     protected function capability(): Capability
@@ -65,11 +68,5 @@ class ListServers extends ForgeTool
                 $s['connection_status'] ?? '-',
             ), $servers));
         });
-    }
-
-    /** Listing is filtered per server, so it only needs View somewhere. */
-    protected function permits(ToolContext $ctx, Target $target): bool
-    {
-        return app(PermissionEngine::class)->allowsAnywhere($ctx->token, $this->capability());
     }
 }
