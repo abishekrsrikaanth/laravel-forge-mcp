@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Tools\Concerns\RejectsControlCharacters;
 use App\Mcp\Tools\Concerns\TargetsExistingWorker;
 use App\Permissions\Capability;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -17,6 +18,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 #[IsDestructive]
 class UpdateWorker extends ForgeTool
 {
+    use RejectsControlCharacters;
     use TargetsExistingWorker;
 
     protected string $name = 'update_worker';
@@ -46,6 +48,11 @@ class UpdateWorker extends ForgeTool
         $workerId = (int) $request->get('worker_id');
         $name = (string) $request->get('name');
         $config = $request->get('config') !== null ? (string) $request->get('config') : null;
+
+        $this->assertSingleLine('name', $name);
+        if ($config !== null) {
+            $this->assertNoNul('config', $config);
+        }
 
         return $this->guarded(
             $request,

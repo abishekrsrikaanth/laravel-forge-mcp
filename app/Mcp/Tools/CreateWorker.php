@@ -7,6 +7,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Support\ToolContext;
 use App\Mcp\Support\ToolDenied;
 use App\Mcp\Support\ToolError;
+use App\Mcp\Tools\Concerns\RejectsControlCharacters;
 use App\Permissions\Capability;
 use App\Permissions\Target;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -19,6 +20,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
 #[IsDestructive]
 class CreateWorker extends ForgeTool
 {
+    use RejectsControlCharacters;
+
     protected string $name = 'create_worker';
 
     protected function capability(): Capability
@@ -47,6 +50,12 @@ class CreateWorker extends ForgeTool
             'user' => ['nullable', 'in:forge,root'],
             'processes' => ['nullable', 'integer', 'min:1', 'max:20'],
         ]);
+
+        foreach (['command', 'directory', 'name', 'user'] as $field) {
+            if (is_string($request->get($field))) {
+                $this->assertSingleLine($field, $request->get($field));
+            }
+        }
 
         $org = $this->resolveOrganization($request);
         $serverId = (int) $request->get('server_id');

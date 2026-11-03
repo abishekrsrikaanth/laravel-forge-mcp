@@ -11,6 +11,9 @@ const FORGE_MCP_CONFIG_ENV = [
 ];
 
 afterEach(function () {
+    foreach (['FORGE_MCP_LOG_TAIL_DEFAULT', 'FORGE_MCP_LOG_TAIL_MAX'] as $n) {
+        unset($_ENV[$n], $_SERVER[$n]);
+    }
     foreach (array_keys(FORGE_MCP_CONFIG_ENV) as $name) {
         unset($_ENV[$name], $_SERVER[$name]);
     }
@@ -42,4 +45,41 @@ it('lists every tunable in .env.example', function () {
     foreach (array_keys(FORGE_MCP_CONFIG_ENV) as $name) {
         expect($example)->toContain("# {$name}=");
     }
+});
+
+it('falls back to defaults for empty or non-numeric env values', function (string $value) {
+    foreach (array_keys(FORGE_MCP_CONFIG_ENV) as $name) {
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+
+    $config = require config_path('forge-mcp.php');
+
+    foreach (FORGE_MCP_CONFIG_ENV as [$key, $default]) {
+        expect($config[$key])->toBe($default);
+    }
+})->with(['empty' => '', 'text' => 'abc']);
+
+it('clamps zero and negative env values to their minimums', function (string $value) {
+    foreach (array_keys(FORGE_MCP_CONFIG_ENV) as $name) {
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+
+    $config = require config_path('forge-mcp.php');
+
+    expect($config['poll_timeout'])->toBe(1)
+        ->and($config['list_cache_ttl'])->toBe(0)
+        ->and($config['secrets_cache_ttl'])->toBe(0)
+        ->and($config['log_tail_default'])->toBe(1)
+        ->and($config['log_tail_max'])->toBe(1)
+        ->and($config['audit_retention_days'])->toBe(1)
+        ->and($config['scrub_min_length'])->toBe(4);
+})->with(['zero' => '0', 'negative' => '-5']);
+
+it('never lets log_tail_max drop below log_tail_default', function () {
+    $_ENV['FORGE_MCP_LOG_TAIL_DEFAULT'] = $_SERVER['FORGE_MCP_LOG_TAIL_DEFAULT'] = '500';
+    $_ENV['FORGE_MCP_LOG_TAIL_MAX'] = $_SERVER['FORGE_MCP_LOG_TAIL_MAX'] = '100';
+
+    $config = require config_path('forge-mcp.php');
+
+    expect($config['log_tail_default'])->toBe(500)->and($config['log_tail_max'])->toBe(500);
 });

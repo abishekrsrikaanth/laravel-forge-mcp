@@ -305,3 +305,12 @@ it('a denied call masks cached site secrets in the audit arguments without calli
         ->and($entry->arguments['command'])->not->toContain('warm-cache-value-7781')->toContain('[REDACTED');
     Http::assertNotSent(fn ($r) => str_contains($r->url(), '/environment'));
 });
+
+it('run_site_command rejects CR and LF and sends nothing', function (string $command) use ($args) {
+    cmdFakes();
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $args + ['command' => $command])
+        ->assertHasErrors()->assertSee('command must be a single line; join multiple commands with && or ;.');
+
+    Http::assertNothingSent();
+})->with(['lf' => "ls\nrm -rf x", 'crlf' => "ls\r\nid", 'cr' => "ls\rid"]);

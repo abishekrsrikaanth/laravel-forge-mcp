@@ -52,6 +52,8 @@ class RunSiteCommand extends ForgeTool
             'command' => ['required', 'string', 'max:'.self::MAX_COMMAND_LENGTH, function (string $attribute, mixed $value, \Closure $fail): void {
                 if (is_string($value) && str_contains($value, "\0")) {
                     $fail('The command must not contain NUL bytes.');
+                } elseif (is_string($value) && preg_match('/[\r\n]/', $value) === 1) {
+                    $fail('command must be a single line; join multiple commands with && or ;.');
                 }
             }],
         ]);

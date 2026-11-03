@@ -389,3 +389,51 @@ it('create_worker on a denied site is denied before the directory is checked', f
         ->assertHasErrors(['not permitted on site 12']);
     expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
 });
+
+$wrkBadValues = ['lf' => "x\nuser=root", 'crlf' => "x\r\nuser=root", 'nul' => "x\0y", 'esc' => "x\x1by", 'del' => "x\x7fy", 'tab' => "x\ty"];
+
+it('create_worker rejects control characters in command, directory, name and user', function (string $field, string $value) use ($configure) {
+    $user = wrkUser([$configure]);
+    $args = ['server_id' => 1, 'command' => 'php artisan queue:work', 'directory' => '/opt/app'];
+
+    $result = ForgeServer::actingAs($user)->tool(CreateWorker::class, [$field => $value] + $args);
+
+    $result->assertHasErrors();
+    $result->assertSee("{$field} must be a single line without control characters.");
+    Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+})->with(function () use ($wrkBadValues) {
+    foreach (['command', 'directory', 'name'] as $field) {
+        foreach ($wrkBadValues as $label => $value) {
+            yield "{$field} {$label}" => [$field, $value];
+        }
+    }
+});
+
+it('create_worker rejects control characters in user before any Forge call', function () use ($configure) {
+    $user = wrkUser([$configure]);
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'user' => "root\nuser=root"])->assertHasErrors();
+
+    Http::assertNothingSent();
+});
+
+it('update_worker rejects control characters in name', function (string $value) use ($configure) {
+    $user = wrkUser([$configure]);
+
+    $result = ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => $value]);
+
+    $result->assertHasErrors();
+    $result->assertSee('name must be a single line without control characters.');
+    Http::assertNothingSent();
+})->with(['lf' => "a\nuser=root", 'crlf' => "a\r\nb", 'nul' => "a\0b", 'esc' => "a\x1bb"]);
+
+it('update_worker allows a multi-line config but rejects NUL in it', function () use ($configure) {
+    $user = wrkUser([$configure]);
+
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n', 'config' => "[program:x]\ncommand=foo\n"])->assertOk();
+    expect(wrkSent('PUT', '/background-processes/5'))->toBe(['name' => 'n', 'config' => "[program:x]\ncommand=foo\n"]);
+
+    Http::fake();
+    ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n', 'config' => "a\0b"])->assertHasErrors();
+    Http::assertNothingSent();
+});

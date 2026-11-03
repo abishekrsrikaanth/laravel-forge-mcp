@@ -192,6 +192,8 @@ Forge MCP also adds worker management, `.env` editing, site commands, scheduled 
 
 Tunables live in `config/forge-mcp.php`. Each can be overridden with an environment variable (they are listed, commented out, in `.env.example`):
 
+Empty or non-numeric values fall back to the default, and values below the minimum are raised to it: `FORGE_MCP_POLL_TIMEOUT` 1, the two cache TTLs 0, `FORGE_MCP_LOG_TAIL_DEFAULT` 1, `FORGE_MCP_LOG_TAIL_MAX` at least the default, `FORGE_MCP_AUDIT_RETENTION_DAYS` 1, `FORGE_MCP_SCRUB_MIN_LENGTH` 4.
+
 | Variable | Default | What it sets |
 |---|---|---|
 | `FORGE_MCP_POLL_TIMEOUT` | `20` | Seconds to wait when polling Forge for a long-running operation (deploys, commands). |
