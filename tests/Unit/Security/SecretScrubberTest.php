@@ -142,7 +142,32 @@ it('leaves ordinary log lines unchanged', function (string $line) {
     'deploy' => ['Installing dependencies from lock file (including require-dev)'],
 ]);
 
-it('masks secrets in a realistic multi-line laravel stack trace and keeps the rest intact', function () {
+/** Mimics PDO's constructor: throws so the trace records the secret as a (truncated) argument. */
+function scrubberTestConnect(string $dsn, string $username, string $password): never
+{
+    throw new RuntimeException('SQLSTATE[HY000] [1045] Access denied for user \'forge\'@\'10.0.0.5\' (using password: YES)');
+}
+
+/** Run $callback with ini settings applied, restoring them afterwards. */
+function withIni(array $settings, Closure $callback): mixed
+{
+    $previous = [];
+    foreach ($settings as $key => $value) {
+        $previous[$key] = ini_set($key, $value);
+    }
+
+    try {
+        return $callback();
+    } finally {
+        foreach ($previous as $key => $value) {
+            if ($value !== false) {
+                ini_set($key, $value);
+            }
+        }
+    }
+}
+
+it('masks secrets in a real laravel stack trace (truncated args) and keeps the rest intact', function () {
     $env = EnvFile::parse(<<<'ENV'
         APP_NAME=Example
         APP_ENV=production
@@ -155,37 +180,104 @@ it('masks secrets in a realistic multi-line laravel stack trace and keeps the re
         DB_PORT=3306
         DB_DATABASE=forge
         DB_USERNAME=forge
-        DB_PASSWORD="Xk9#mP2$vQ7!rT4z"
+        DB_PASSWORD="Xk9#mP2$vQ7!rT4zLongerThan15"
         ENV);
-    $password = 'Xk9#mP2$vQ7!rT4z';
+    $password = 'Xk9#mP2$vQ7!rT4zLongerThan15';
+    $prefix = substr($password, 0, 15).'...';
     $jwt = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiIxIiwianRpIjoiYWJjIiwic3ViIjoiNDIifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
     $stripe = 'sk_'.'live_51NzQ2bKx9Yq7TrVw3Hj8LmPa0Sd';
 
-    $trace = implode("\n", [
-        "[2026-11-03 10:15:42] production.ERROR: SQLSTATE[HY000] [1045] Access denied for user 'forge'@'10.0.0.5' (using password: YES) (Connection: mysql, SQL: select * from `users` where `id` = 42 limit 1) {\"exception\":\"[object] (Illuminate\\\\Database\\\\QueryException(code: 1045): SQLSTATE[HY000] [1045] Access denied at /home/forge/example.com/vendor/laravel/framework/src/Illuminate/Database/Connection.php:825)",
-        '[stacktrace]',
-        "#0 /home/forge/example.com/vendor/laravel/framework/src/Illuminate/Database/Connectors/Connector.php(65): PDO->__construct('mysql:host=10.0...', 'forge', '{$password}', Array)",
-        "#1 /home/forge/example.com/app/Services/Billing.php(31): Stripe\\StripeClient->__construct(Array('api_key' => '{$stripe}'))",
-        "#2 /home/forge/example.com/app/Http/Middleware/Authenticate.php(18): App\\Auth\\Jwt->decode('{$jwt}')",
-        '#3 /home/forge/example.com/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(183): App\\Http\\Middleware\\Authenticate->handle(Object(Illuminate\\Http\\Request), Object(Closure))',
-        '#4 {main}',
-        '"}',
-    ]);
+    $trace = withIni(['zend.exception_ignore_args' => '0', 'zend.exception_string_param_max_len' => '15'], function () use ($password) {
+        try {
+            scrubberTestConnect('mysql:host=10.0.0.5;port=3306;dbname=forge', 'forge', $password);
+        } catch (RuntimeException $e) {
+            return $e;
+        }
+    });
 
-    $scrubbed = (new SecretScrubber)->scrub($trace, SecretSet::of($env));
+    // Laravel's daily log format: message, JSON context, then the raw getTraceAsString().
+    $log = "[2026-11-03 10:15:42] production.ERROR: {$trace->getMessage()} {\"exception\":\"[object] (RuntimeException(code: 0): "
+        ."{$trace->getMessage()} at {$trace->getFile()}:{$trace->getLine()})\n[stacktrace]\n{$trace->getTraceAsString()}\n\"}\n"
+        ."[2026-11-03 10:15:43] production.ERROR: Invalid API Key provided: {$stripe} {\"userId\":42}\n"
+        ."[2026-11-03 10:15:44] production.WARNING: Rejected bearer {$jwt} for /api/me\n";
 
-    expect($env['DB_PASSWORD'])->toBe($password)
-        ->and($scrubbed)->not->toContain($password)
+    expect($log)->toContain("'forge', '{$prefix}')"); // the real trace truncates the argument
+
+    $scrubbed = (new SecretScrubber)->scrub($log, SecretSet::of($env));
+
+    expect($scrubbed)->not->toContain(substr($password, 0, 15))
         ->not->toContain($stripe)
         ->not->toContain($jwt)
-        ->toContain("'forge', '[REDACTED:DB_PASSWORD]', Array)")
-        ->toContain("Array('api_key' => '[REDACTED]'))")
-        ->toContain("App\\Auth\\Jwt->decode('[REDACTED]')")
+        ->toContain("'forge', '[REDACTED:DB_PASSWORD]')")
         ->toBe(str_replace(
-            [$password, $stripe, $jwt],
+            [$prefix, $stripe, $jwt],
             ['[REDACTED:DB_PASSWORD]', '[REDACTED]', '[REDACTED]'],
-            $trace,
+            $log,
         ));
+});
+
+it('masks the escaped and truncated forms php prints for trace arguments', function (string $value) {
+    $trace = withIni(['zend.exception_ignore_args' => '0'], function () use ($value) {
+        try {
+            scrubberTestConnect('dsn', 'forge', $value);
+        } catch (RuntimeException $e) {
+            return $e->getTraceAsString();
+        }
+    });
+
+    $scrubbed = (new SecretScrubber)->scrub($trace, SecretSet::of(['DB_PASSWORD' => $value]));
+
+    expect($scrubbed)->toContain("'forge', '[REDACTED:DB_PASSWORD]')");
+})->with([
+    'short with escapes' => ["ab\\c\td\nef"],
+    'long with escapes' => ["a\\b\nc\td\x7fefghijklmnopqrstuvwxyz"],
+    'long plain' => ['Xk9mP2vQ7rT4zLongPassword'],
+    'non-ascii' => ['pässwörd-ünïcode-1'],
+]);
+
+it('uses the configured trace argument length', function () {
+    $scrubbed = withIni(['zend.exception_string_param_max_len' => '10'], fn () => scrubWith(
+        "connect('abcdefghij...')",
+        ['DB_PASSWORD' => 'abcdefghijKLMNOP'],
+    ));
+
+    expect($scrubbed)->toBe("connect('[REDACTED:DB_PASSWORD]')");
+});
+
+it('masks sql- and php-escaped forms of values with single quotes', function () {
+    $env = ['DB_PASSWORD' => "p@ss'w0rd/x"];
+
+    expect(scrubWith("update u set pw = 'p@ss''w0rd/x'", $env))->toBe("update u set pw = '[REDACTED:DB_PASSWORD]'")
+        ->and(scrubWith("array('p@ss\\'w0rd/x')", $env))->toBe("array('[REDACTED:DB_PASSWORD]')");
+});
+
+it('still masks secrets next to huge whitespace-free runs without jit', function (string $blob) {
+    $text = "[2026-11-03] local.INFO: payload {$blob}\n"
+        ."redis://default:LeakedPw12345@h:6379 api_token=LeakedTok999999 {\"password\": \"LeakedJson777\"}\n";
+
+    $scrubbed = withIni(['pcre.jit' => '0'], fn () => scrubWith($text));
+
+    expect($scrubbed)->not->toContain('LeakedPw12345')
+        ->not->toContain('LeakedTok999999')
+        ->not->toContain('LeakedJson777')
+        ->toContain($blob);
+})->with([
+    'no whitespace' => [str_repeat('A', 1_000_000)],
+    'base64 image' => ['data:image/png;base64,'.str_repeat('iVBORw0KGgo', 100_000)],
+    'long json string' => ['{"body":"'.str_repeat('x', 1_000_000).'"}'],
+    'key-like chain' => [str_repeat('apiKEY', 200_000)],
+    'url-like' => ['http://'.str_repeat('a', 500_000).':'.str_repeat('b', 500_000)],
+]);
+
+it('fails closed when a regex cannot scan the text', function () {
+    $text = "first line api_token=LeakedTok999999\nsecond {\"password\": \"LeakedJson777\"}\nknown s3cr3tPassw0rd";
+
+    $scrubbed = withIni(['pcre.jit' => '0', 'pcre.backtrack_limit' => '1'], fn () => scrubWith($text, ['DB_PASSWORD' => 's3cr3tPassw0rd']));
+
+    expect($scrubbed)->not->toContain('LeakedTok999999')
+        ->not->toContain('LeakedJson777')
+        ->not->toContain('s3cr3tPassw0rd')
+        ->toContain('[REDACTED: unscannable]');
 });
 
 it('merges secret sets, keeping completeness and warnings', function () {
@@ -198,4 +290,14 @@ it('merges secret sets, keeping completeness and warnings', function () {
         ->and($merged->warnings)->toBe(['w1'])
         ->and(SecretSet::empty()->complete)->toBeTrue()
         ->and((new SecretScrubber)->scrub('aaaaaaaaaa bbbbbbbbbb', $merged))->toBe('[REDACTED:A_SECRET] [REDACTED:B_SECRET]');
+});
+
+it('scans many unterminated private key headers in linear time', function () {
+    $text = str_repeat("-----BEGIN RSA PRIVATE KEY-----\nAAAA\n", 50_000);
+
+    $started = microtime(true);
+    $scrubbed = scrubWith($text);
+
+    expect(microtime(true) - $started)->toBeLessThan(5.0)
+        ->and($scrubbed)->toBe(str_repeat("[REDACTED]\n", 50_000));
 });
