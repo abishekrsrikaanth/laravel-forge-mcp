@@ -4,6 +4,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+require_once __DIR__.'/Helpers/Mcp.php';
+
 /*
 |--------------------------------------------------------------------------
 | Test Case

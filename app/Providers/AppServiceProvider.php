@@ -4,10 +4,14 @@ namespace App\Providers;
 
 use App\Permissions\PermissionEngine;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +30,19 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * MCP requests: 120 per minute per access token.
+     */
+    protected function configureRateLimiting(): void
+    {
+        RateLimiter::for('mcp', function (Request $request): Limit {
+            $token = $request->user()?->currentAccessToken();
+
+            return Limit::perMinute(120)->by($token instanceof PersonalAccessToken ? (string) $token->getKey() : 'ip:'.$request->ip());
+        });
     }
 
     /**

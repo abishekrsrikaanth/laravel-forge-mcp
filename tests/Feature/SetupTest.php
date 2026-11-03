@@ -15,7 +15,7 @@ it('does not redirect the mcp endpoint before setup', function () {
     $response = postJson('/mcp');
 
     expect($response->isRedirect())->toBeFalse();
-    expect($response->getStatusCode())->toBeIn([401, 404, 405]);
+    expect($response->getStatusCode())->toBe(401);
 });
 
 it('renders the setup page when no user exists', function () {

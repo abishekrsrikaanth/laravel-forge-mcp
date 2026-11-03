@@ -1,5 +1,6 @@
 <?php
 
+use App\Mcp\Servers\ForgeServer;
 use Laravel\Mcp\Facades\Mcp;
 
-// Mcp::web('/mcp/demo', \App\Mcp\Servers\PublicServer::class);
+Mcp::web('/mcp', ForgeServer::class)->middleware(['auth:sanctum', 'abilities:mcp', 'throttle:mcp']);

@@ -37,7 +37,8 @@ return [
     |
     */
 
-    'guard' => ['web'],
+    // Empty: the MCP endpoint accepts bearer tokens only, never the dashboard session.
+    'guard' => [],
 
     /*
     |--------------------------------------------------------------------------
