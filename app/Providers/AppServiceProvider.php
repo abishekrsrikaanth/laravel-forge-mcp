@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Permissions\PermissionEngine;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One instance per request/job so memoized permission rules never outlive it.
+        $this->app->scoped(PermissionEngine::class);
     }
 
     /**
