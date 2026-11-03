@@ -16,6 +16,8 @@ use App\Mcp\Tools\ListOrganizations;
 use App\Mcp\Tools\ListServers;
 use App\Mcp\Tools\ListSites;
 use App\Mcp\Tools\ListWorkers;
+use App\Mcp\Tools\RestartNginx;
+use App\Mcp\Tools\RestartPhpFpm;
 use Laravel\Mcp\Server;
 
 class ForgeServer extends Server
@@ -47,5 +49,7 @@ class ForgeServer extends Server
         GetSiteLog::class,
         ListWorkers::class,
         GetWorkerLog::class,
+        RestartNginx::class,
+        RestartPhpFpm::class,
     ];
 }

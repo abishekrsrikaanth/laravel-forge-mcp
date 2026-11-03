@@ -262,6 +262,18 @@ abstract class ForgeTool extends Tool
         throw new ToolError("Server {$serverId} is not in organization {$org}.");
     }
 
+    /** The cached record name of a server, falling back to "server {id}". */
+    protected function serverName(ToolContext $ctx, string $org, int $serverId): string
+    {
+        foreach ($ctx->forge->servers($org) as $server) {
+            if ((int) ($server['id'] ?? 0) === $serverId && is_string($server['name'] ?? null) && $server['name'] !== '') {
+                return $server['name'];
+            }
+        }
+
+        return "server {$serverId}";
+    }
+
     /**
      * The target governing a background process. Its site is inferred (see WorkerSiteResolver), so every
      * candidate site must permit $capability: the first candidate that does not is returned so guarded()
