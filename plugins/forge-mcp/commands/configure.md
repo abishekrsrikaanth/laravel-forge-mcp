@@ -15,7 +15,7 @@ Follow these steps in order. Ask before you write anything, and keep the user in
 - Never write an access token into any file, and never ask the user to paste one into the chat. Tokens only ever come from the `FORGE_MCP_TOKEN` environment variable, referenced as `${FORGE_MCP_TOKEN}`.
 - Never print the value of an existing `Authorization` header you find in a file. Leave it exactly as it is.
 - When you edit `.mcp.json`, merge: keep every other server and every other key. Change only the `forge-mcp` entry.
-- Write `X-Forge-Organization`, `X-Forge-Server` and `X-Forge-Site` only with literal values (for example `"123"`), never as `${...}` variables. An unset variable expands to an empty header, and Forge MCP then answers every call with `Invalid X-Forge-… header.`
+- Write `X-Forge-Organization`, `X-Forge-Server` and `X-Forge-Site` only with literal values (for example `"123"`), never as `${...}` variables. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version. An empty value makes Forge MCP answer every call with `Invalid X-Forge-… header.` `FORGE_MCP_URL` and `FORGE_MCP_TOKEN` must be set before Claude Code starts.
 - Use only ids returned by the Forge MCP tools. Never guess a slug or an id.
 
 ## 1. Check that the Forge MCP server is available

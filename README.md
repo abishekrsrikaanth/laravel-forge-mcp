@@ -205,7 +205,7 @@ If a repository always works with the same Forge site, put its ids in the projec
 }
 ```
 
-The URL and token come from each developer's environment, so the file can be committed. Write the `X-Forge-*` values as literals: an unset `${...}` variable becomes an empty header, and every call then fails with `Invalid X-Forge-… header.` Alternatively, store defaults per access token with `set_defaults` or on the token's page in the dashboard. Headers, when present, replace token defaults entirely, and defaults never bypass a permission check. See [Project defaults](repo-docs/project-defaults.md).
+The URL and token come from each developer's environment, so the file can be committed. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version, so write the `X-Forge-*` values as literals and set `FORGE_MCP_URL` / `FORGE_MCP_TOKEN` before starting Claude Code. An empty header value makes every call fail with `Invalid X-Forge-… header.` Alternatively, store defaults per access token with `set_defaults` or on the token's page in the dashboard. Headers, when present, replace token defaults entirely, and defaults never bypass a permission check. See [Project defaults](repo-docs/project-defaults.md).
 
 ## Claude Code plugin
 

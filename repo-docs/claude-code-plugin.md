@@ -36,7 +36,7 @@ export FORGE_MCP_URL=https://forge-mcp.example.com
 export FORGE_MCP_TOKEN=...
 ```
 
-Claude Code reads environment variables when it starts, so restart it after setting them.
+Claude Code reads environment variables when it starts, so set them before starting it, and restart it after changing them. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version, so `X-Forge-*` headers should be literal values, and `FORGE_MCP_URL` / `FORGE_MCP_TOKEN` must be set before starting Claude Code.
 
 ## `/forge-mcp:configure`
 
@@ -81,8 +81,8 @@ It is read-only: the command may only use read tools, and it never deploys or ch
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `/forge-mcp:configure` keeps saying the server is not available | The environment variables are not set in the shell Claude Code was started from, the project server was not approved, or the URL is wrong. | Check `echo $FORGE_MCP_URL`, restart Claude Code from that shell, and open `/mcp` to approve or reconnect `forge-mcp`. |
-| `forge-mcp` fails to connect with HTTP 401 | `FORGE_MCP_TOKEN` is unset or wrong, so the client sends `Bearer ` with no token. | Set the variable to a valid access token and restart Claude Code. |
-| Every call answers `Invalid X-Forge-… header.` | An `X-Forge-*` header is empty or malformed, usually because it uses a `${...}` variable that is unset. | Use literal values in `.mcp.json` (see [the empty header trap](project-defaults.md#the-empty-header-trap)), then reconnect. |
+| `forge-mcp` fails to connect with HTTP 401 | `FORGE_MCP_TOKEN` is wrong, or unset and sent as an empty value (`Bearer ` with no token). | Set the variable to a valid access token and restart Claude Code. |
+| Every call answers `Invalid X-Forge-… header.` | An `X-Forge-*` header is empty or malformed, for example a `${...}` variable that is unset and was sent as an empty value. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version, so `X-Forge-*` headers should be literal values, and `FORGE_MCP_URL` / `FORGE_MCP_TOKEN` must be set before starting Claude Code. | Use literal values in `.mcp.json` (see [the empty header trap](project-defaults.md#the-empty-header-trap)), then reconnect. |
 | `X-Forge-Site requires X-Forge-Server.` | The site header is set without the server header. | Add `X-Forge-Server`, or remove `X-Forge-Site`. |
 | The new defaults are not used | The client has not reconnected, or the server is also configured in your user or local scope (for example with `claude mcp add`), which takes precedence over the project's `.mcp.json`. | Reconnect in `/mcp`. Run `claude mcp list` to see where `forge-mcp` comes from, and `claude mcp remove forge-mcp` to remove a local entry. |
 | `get_defaults` shows token defaults as overridden | The project sends `X-Forge-*` headers, which replace the token's defaults entirely. | Expected. Remove the headers to use the token defaults. |

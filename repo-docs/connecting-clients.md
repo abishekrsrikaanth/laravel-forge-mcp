@@ -24,7 +24,7 @@ claude mcp add --transport http forge-mcp https://your-host/mcp --header "Author
 
 Run `claude mcp list` to check that the server is connected, then ask Claude to list your Forge servers. Use `claude mcp remove forge-mcp` to remove it.
 
-To share the server with a team through the repository, put it in the project's `.mcp.json` with the URL and token taken from environment variables, and optionally add default organization, server and site headers. The [Claude Code plugin](claude-code-plugin.md) writes this file for you with `/forge-mcp:configure`, and [Project defaults](project-defaults.md) explains the headers. Write the `X-Forge-*` header values as literals: an unset `${...}` variable becomes an empty header, and every call then fails with `Invalid X-Forge-… header.`
+To share the server with a team through the repository, put it in the project's `.mcp.json` with the URL and token taken from environment variables, and optionally add default organization, server and site headers. The [Claude Code plugin](claude-code-plugin.md) writes this file for you with `/forge-mcp:configure`, and [Project defaults](project-defaults.md) explains the headers. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version, so `X-Forge-*` headers should be literal values, and `FORGE_MCP_URL` / `FORGE_MCP_TOKEN` must be set before starting Claude Code. An empty header value makes every call fail with `Invalid X-Forge-… header.`
 
 ## Cursor
 
@@ -90,6 +90,6 @@ Access tokens do not expire on their own; revoke the ones you no longer use. The
 | Redirects or HTML instead of JSON | The URL is wrong (missing `/mcp`) or HTTP is redirected to HTTPS and the client does not follow it. | Use the full `https://your-host/mcp` URL. |
 | Connected, but no tools are listed | The token has no capabilities anywhere reachable, or no organization is exposed. | See [Tool not visible](troubleshooting.md#a-tool-is-not-visible-to-the-agent). |
 | Every tool says `Forge is not connected.` | No Forge token is connected. | Connect Forge on the **Forge connection** page. |
-| Every tool says `Invalid X-Forge-… header.` | An `X-Forge-*` header is empty or malformed, often an unset `${...}` variable. | Use literal values; see [the empty header trap](project-defaults.md#the-empty-header-trap). |
+| Every tool says `Invalid X-Forge-… header.` | An `X-Forge-*` header is empty or malformed, for example an unset `${...}` variable sent as an empty value. | Use literal values; see [the empty header trap](project-defaults.md#the-empty-header-trap). |
 
 More in [Troubleshooting](troubleshooting.md).

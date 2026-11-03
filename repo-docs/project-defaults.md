@@ -61,9 +61,9 @@ The file contains ids, not secrets, so it can be committed: everyone on the team
 
 ### The empty header trap
 
-Write `X-Forge-*` values as literals, not as `${...}` variables. If a variable is unset, Claude Code sends the header with an empty value. An empty or malformed header is not ignored: Forge MCP answers every tool call that works inside an organization (and `get_defaults`) with `Invalid X-Forge-Server header.` (or the name of the header concerned) until it is fixed. This applies even to calls that pass every id explicitly, because the headers are validated on each of those calls. Only `list_organizations` without an `organization` argument still works, and it then shows no defaults line. The header's value is never echoed back.
+Write `X-Forge-*` values as literals, not as `${...}` variables. If a referenced environment variable isn't set, Claude Code either fails to load the server or sends an empty value, depending on version, so `X-Forge-*` headers should be literal values, and `FORGE_MCP_URL` / `FORGE_MCP_TOKEN` must be set before starting Claude Code. An empty value, when sent, is not ignored: like any malformed header, it makes Forge MCP answer every tool call that works inside an organization (and `get_defaults`) with `Invalid X-Forge-Server header.` (or the name of the header concerned) until it is fixed. This applies even to calls that pass every id explicitly, because the headers are validated on each of those calls. Only `list_organizations` without an `organization` argument still works, and it then shows no defaults line. The header's value is never echoed back.
 
-The same applies to `Authorization: Bearer ${FORGE_MCP_TOKEN}`: with the variable unset, the client sends `Bearer ` and the server answers HTTP 401.
+The same applies to `Authorization: Bearer ${FORGE_MCP_TOKEN}`: with the variable unset, the server either does not load or is sent `Bearer ` with no token, which Forge MCP answers with HTTP 401.
 
 After you change `.mcp.json`, reconnect the server so the new headers are sent: open `/mcp`, select `forge-mcp` and choose Reconnect (or run `/mcp reconnect all`).
 

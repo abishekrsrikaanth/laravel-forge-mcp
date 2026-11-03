@@ -12,7 +12,7 @@ A tool is listed only when the access token's capability is allowed somewhere th
 
 ## Defaults and `X-Forge-*` headers
 
-- **`Invalid X-Forge-Organization header.`** (or `X-Forge-Server`, `X-Forge-Site`) on every call: the header is empty or malformed. The usual cause is a `${...}` variable in `.mcp.json` that is not set, which the client sends as an empty header. Use literal values (see [the empty header trap](project-defaults.md#the-empty-header-trap)) and reconnect the server.
+- **`Invalid X-Forge-Organization header.`** (or `X-Forge-Server`, `X-Forge-Site`) on every call: the header is empty or malformed. A common cause is a `${...}` variable in `.mcp.json` that is not set: depending on version, Claude Code then either fails to load the server or sends an empty value. Use literal values (see [the empty header trap](project-defaults.md#the-empty-header-trap)) and reconnect the server.
 - **`X-Forge-Site requires X-Forge-Server.`** Add the server header or remove the site header.
 - **`server_id is required (no default server is configured for this project or token).`** Pass `server_id`, or configure a default ([Project defaults](project-defaults.md)).
 - **The token's defaults are ignored.** Project headers replace them as a bundle whenever any `X-Forge-*` header is sent. `get_defaults` shows which source is in effect.
