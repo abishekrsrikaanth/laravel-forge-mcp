@@ -378,3 +378,14 @@ it('a deny on a deeper site below the worker directory denies even when a shorte
     $user = wrkUser([[Capability::ManageWorkers, ScopeType::Global, new Target, true]]);
     ForgeServer::actingAs($user)->tool(RestartWorker::class, ['server_id' => 1, 'worker_id' => 30])->assertOk();
 });
+
+it('create_worker on a denied site is denied before the directory is checked', function () {
+    $user = wrkUser([
+        [Capability::ConfigureWorkers, ScopeType::Global, new Target, false],
+        [Capability::ConfigureWorkers, ScopeType::Site, new Target('acme', 1, 13), true],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(CreateWorker::class, ['server_id' => 1, 'command' => 'x', 'site_id' => 12, 'directory' => '/root'])
+        ->assertHasErrors(['not permitted on site 12']);
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+});

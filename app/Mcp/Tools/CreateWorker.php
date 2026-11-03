@@ -92,6 +92,10 @@ class CreateWorker extends ForgeTool
 
         $target = $this->siteTarget($ctx, $org, $serverId, $siteId);
 
+        if (! $this->permits($ctx, $target)) {
+            return $target; // guarded() denies on the site before anything about it is revealed
+        }
+
         if ($directory !== null) {
             $this->assertInsideSiteRoot($ctx, $org, $serverId, $siteId, $directory);
         }
