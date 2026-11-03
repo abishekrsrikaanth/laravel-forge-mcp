@@ -45,7 +45,7 @@ class GetScheduledJobOutput extends ForgeTool
 
         return $this->guarded(
             $request,
-            fn (ToolContext $ctx) => $siteId !== null ? $this->siteTarget($ctx, $org, $serverId, $siteId) : $this->serverTarget($ctx, $org, $serverId),
+            fn (ToolContext $ctx) => $siteId !== null ? $this->siteTarget($ctx, $org, $serverId, $siteId) : $this->serverWideTarget($ctx, $org, $serverId, Capability::ViewLogs),
             function (ToolContext $ctx) use ($org, $serverId, $jobId, $siteId, $lines) {
                 $output = $ctx->forge->scheduledJobOutput($org, $serverId, $jobId, $siteId);
                 $ctx->summary = "Read output of scheduled job {$jobId}.";

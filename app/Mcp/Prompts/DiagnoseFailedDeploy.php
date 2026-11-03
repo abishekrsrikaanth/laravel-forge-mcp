@@ -51,7 +51,22 @@ class DiagnoseFailedDeploy extends Prompt
             'site_id' => ['required', 'integer', 'min:1'],
         ]);
 
-        $organization = is_string($data['organization'] ?? null) && $data['organization'] !== '' ? " in organization {$data['organization']}" : '';
+        $organization = '';
+        $requested = $data['organization'] ?? null;
+
+        if (is_string($requested) && $requested !== '') {
+            $user = $request->user();
+            $exposed = $user instanceof User ? ($user->forgeConnection?->exposedOrganizations() ?? []) : [];
+
+            if (! in_array($requested, $exposed, true)) {
+                // Never interpolate unvetted text: it would land in the agent's instructions.
+                $shown = preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/', $requested) === 1 ? "Organization '{$requested}'" : 'That organization';
+
+                return Response::error("{$shown} is not available.");
+            }
+
+            $organization = " in organization {$requested}";
+        }
 
         return Response::text(
             "Diagnose the most recent deployment of site {$data['site_id']} on server {$data['server_id']}{$organization}. "

@@ -262,6 +262,29 @@ abstract class ForgeTool extends Tool
         throw new ToolError("Server {$serverId} is not in organization {$org}.");
     }
 
+    /**
+     * The target for a server-wide read whose data may include any site on the server (server-level cron
+     * jobs, events and their output carry no site id). The capability is required on the server AND on every
+     * site: the first site that denies it is returned so guarded() denies there; otherwise the server target.
+     *
+     * @throws ToolError|ForgeException
+     */
+    protected function serverWideTarget(ToolContext $ctx, string $org, int $serverId, Capability $capability): Target
+    {
+        $server = $this->serverTarget($ctx, $org, $serverId);
+        $engine = app(PermissionEngine::class);
+
+        foreach ($ctx->forge->sites($org, $serverId) as $site) {
+            $siteId = (int) ($site['id'] ?? 0);
+
+            if ($siteId > 0 && ! $engine->allows($ctx->token, $capability, new Target($org, $serverId, $siteId))) {
+                return new Target($org, $serverId, $siteId);
+            }
+        }
+
+        return $server;
+    }
+
     /** The cached record name of a server, falling back to "server {id}". */
     protected function serverName(ToolContext $ctx, string $org, int $serverId): string
     {

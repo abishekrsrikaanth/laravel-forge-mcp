@@ -43,7 +43,7 @@ class GetServerEventOutput extends ForgeTool
 
         return $this->guarded(
             $request,
-            fn (ToolContext $ctx) => $this->serverTarget($ctx, $org, $serverId),
+            fn (ToolContext $ctx) => $this->serverWideTarget($ctx, $org, $serverId, Capability::ViewLogs),
             function (ToolContext $ctx) use ($org, $serverId, $eventId, $lines) {
                 $output = $ctx->forge->eventOutput($org, $serverId, $eventId);
                 $ctx->summary = "Read output of event {$eventId} on server {$serverId}.";

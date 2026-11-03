@@ -40,7 +40,7 @@ class ListScheduledJobs extends ForgeTool
 
         return $this->guarded(
             $request,
-            fn (ToolContext $ctx) => $siteId !== null ? $this->siteTarget($ctx, $org, $serverId, $siteId) : $this->serverTarget($ctx, $org, $serverId),
+            fn (ToolContext $ctx) => $siteId !== null ? $this->siteTarget($ctx, $org, $serverId, $siteId) : $this->serverWideTarget($ctx, $org, $serverId, Capability::View),
             function (ToolContext $ctx) use ($org, $serverId, $siteId) {
                 $jobs = $ctx->forge->scheduledJobs($org, $serverId, $siteId);
                 $ctx->summary = $siteId !== null ? "Listed scheduled jobs of site {$siteId}." : "Listed scheduled jobs of server {$serverId}.";
@@ -49,12 +49,19 @@ class ListScheduledJobs extends ForgeTool
                     return 'No scheduled jobs found.';
                 }
 
-                return implode("\n", array_map(static function (array $j): string {
+                $total = count($jobs);
+                $lines = array_map(static function (array $j): string {
                     $frequency = is_string($j['frequency'] ?? null) && $j['frequency'] !== '' && $j['frequency'] !== 'custom' ? $j['frequency'] : ($j['cron'] ?? null);
                     $show = static fn (mixed $v): string => is_scalar($v) && $v !== '' ? (string) $v : '-';
 
                     return implode(' ', [$show($j['id'] ?? null), $show($frequency), $show($j['user'] ?? null), $show($j['command'] ?? null)]);
-                }, $jobs));
+                }, array_slice($jobs, 0, 100));
+
+                if ($total > 100) {
+                    $lines[] = '… '.($total - 100).' more';
+                }
+
+                return implode("\n", $lines);
             },
         );
     }

@@ -7,6 +7,7 @@ use App\Mcp\Tools\GetScheduledJobOutput;
 use App\Mcp\Tools\GetServerEventOutput;
 use App\Mcp\Tools\ListScheduledJobs;
 use App\Mcp\Tools\ListServerEvents;
+use App\Models\AuditEntry;
 use App\Permissions\Capability;
 use App\Permissions\ScopeType;
 use App\Permissions\Target;
@@ -20,6 +21,9 @@ beforeEach(function () {
     $job = fn (int $id, string $freq, string $cmd) => ['id' => (string) $id, 'type' => 'scheduledJobs', 'attributes' => ['command' => $cmd, 'user' => 'forge', 'frequency' => $freq, 'cron' => '* * * * *', 'status' => 'installed']];
 
     Http::fake([
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/13/scheduled-jobs*' => Http::response(['data' => [['id' => '8', 'type' => 'scheduledJobs', 'attributes' => ['command' => 'x', 'user' => 'forge', 'frequency' => 'hourly', 'cron' => '0 * * * *']]]]),
+        'forge.laravel.com/api/orgs/acme/servers/2/scheduled-jobs*' => Http::response(['data' => array_map(fn ($i) => ['id' => (string) $i, 'type' => 'scheduledJobs', 'attributes' => ['command' => 'c', 'user' => 'forge', 'frequency' => 'hourly']], range(1, 105))]),
+        'forge.laravel.com/api/orgs/acme/servers/2/sites*' => Http::response(mcpForgeCollection('sites', [])),
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/integrations/horizon' => Http::response([
             'data' => ['id' => '3', 'type' => 'horizonIntegrations', 'attributes' => ['enabled' => 'true', 'horizon_installed' => true]],
             'included' => [['id' => '77', 'type' => 'backgroundProcesses', 'attributes' => ['status' => 'running', 'command' => 'php artisan horizon']]],
@@ -38,8 +42,9 @@ beforeEach(function () {
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/environment' => Http::response(['data' => ['attributes' => ['content' => "APP_KEY=base64:supersecretvalue123456\n"]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
             ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1],
+            ['id' => 13, 'name' => 'beta.test', 'server_id' => 1],
         ])),
-        'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [['id' => 1, 'name' => 'web-1']])),
+        'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [['id' => 1, 'name' => 'web-1'], ['id' => 2, 'name' => 'web-2']])),
     ]);
 });
 
@@ -140,4 +145,43 @@ it('server event output uses server secrets', function () {
         ->assertOk()
         ->assertSee('evt')
         ->assertDontSee('supersecretvalue123456');
+});
+
+function opsSiteDenied(): mixed
+{
+    return opsUser([
+        [Capability::View, ScopeType::Site, new Target('acme', 1, 12), false],
+        [Capability::ViewLogs, ScopeType::Site, new Target('acme', 1, 12), false],
+    ]);
+}
+
+it('server-wide reads are denied when any site on the server is denied', function (string $tool, array $args, string $leak) {
+    $user = opsSiteDenied();
+
+    ForgeServer::actingAs($user)->tool($tool, ['server_id' => 1] + $args)
+        ->assertHasErrors(['not permitted']);
+
+    Http::assertNotSent(fn ($r) => str_contains($r->url(), $leak));
+    expect(AuditEntry::where('outcome', AuditEntry::DENIED)->count())->toBe(1);
+})->with([
+    'list_scheduled_jobs' => [ListScheduledJobs::class, [], '/servers/1/scheduled-jobs'],
+    'get_scheduled_job_output' => [GetScheduledJobOutput::class, ['job_id' => 6], '/servers/1/scheduled-jobs/6/output'],
+    'list_server_events' => [ListServerEvents::class, [], '/servers/1/events'],
+    'get_server_event_output' => [GetServerEventOutput::class, ['event_id' => 9], '/servers/1/events/9/output'],
+]);
+
+it('site-scoped job list still works for an allowed site when another site is denied', function () {
+    $user = opsSiteDenied();
+
+    ForgeServer::actingAs($user)->tool(ListScheduledJobs::class, ['server_id' => 1, 'site_id' => 13])
+        ->assertOk()
+        ->assertSee('8 hourly forge x');
+});
+
+it('list_scheduled_jobs caps output at 100 lines', function () {
+    $user = opsUser();
+    ForgeServer::actingAs($user)->tool(ListScheduledJobs::class, ['server_id' => 2])
+        ->assertOk()
+        ->assertSee('… 5 more')
+        ->assertDontSee('105 hourly');
 });

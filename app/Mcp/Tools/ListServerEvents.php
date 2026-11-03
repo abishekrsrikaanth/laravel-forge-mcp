@@ -40,7 +40,7 @@ class ListServerEvents extends ForgeTool
 
         return $this->guarded(
             $request,
-            fn (ToolContext $ctx) => $this->serverTarget($ctx, $org, $serverId),
+            fn (ToolContext $ctx) => $this->serverWideTarget($ctx, $org, $serverId, Capability::View),
             function (ToolContext $ctx) use ($org, $serverId, $limit) {
                 $events = array_slice($ctx->forge->events($org, $serverId, $limit), 0, $limit);
                 $ctx->summary = "Listed events of server {$serverId}.";

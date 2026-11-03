@@ -1,5 +1,6 @@
 <?php
 
+use App\Mcp\Servers\ForgeServer;
 use App\Mcp\Tools\ListOrganizations;
 use App\Models\AuditEntry;
 use App\Permissions\Capability;
@@ -165,4 +166,16 @@ it('rate limits mcp requests to 120 per minute per token', function () {
 
 it('registers list_organizations under its snake_case name', function () {
     expect((new ListOrganizations)->name())->toBe('list_organizations');
+});
+
+it('a token with every capability sees all registered tools on one page', function () {
+    $user = mcpOwner();
+    $grants = array_map(fn (Capability $c) => [$c, ScopeType::Global, new Target, true], Capability::cases());
+    $new = mcpNewToken($user, $grants);
+
+    $response = mcpPost('tools/list', bearer: $new->plainTextToken)->assertOk();
+
+    $registered = (new ReflectionProperty(ForgeServer::class, 'tools'))->getDefaultValue();
+    expect(mcpToolNames($response))->toHaveCount(count($registered))
+        ->and($response->json('result.nextCursor'))->toBeNull();
 });

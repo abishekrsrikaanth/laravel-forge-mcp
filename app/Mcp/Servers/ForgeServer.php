@@ -57,8 +57,10 @@ class ForgeServer extends Server
         - Secrets in output are replaced with [REDACTED] markers; do not try to recover them.
     MARKDOWN;
 
-    /** The package default (15) would silently page tools out of view for clients that ignore nextCursor. */
-    public int $defaultPaginationLength = 50;
+    /** The package defaults (15/50) would page tools out of view for clients that ignore nextCursor. */
+    public int $defaultPaginationLength = 200;
+
+    public int $maxPaginationLength = 200;
 
     protected array $tools = [
         ListOrganizations::class,
