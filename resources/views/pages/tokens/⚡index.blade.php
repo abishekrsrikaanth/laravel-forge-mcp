@@ -81,9 +81,9 @@ new #[Layout('layouts::app'), Title('Access tokens')] class extends Component {
         $token = $this->plainTextToken ?? '<token>';
 
         return [
-            'command' => 'claude mcp add --transport http forge '.$url.' --header "Authorization: Bearer '.$token.'"',
+            'command' => 'claude mcp add --transport http forge-mcp '.$url.' --header "Authorization: Bearer '.$token.'"',
             'json' => json_encode(
-                ['mcpServers' => ['forge' => ['type' => 'http', 'url' => $url, 'headers' => ['Authorization' => 'Bearer '.$token]]]],
+                ['mcpServers' => ['forge-mcp' => ['type' => 'http', 'url' => $url, 'headers' => ['Authorization' => 'Bearer '.$token]]]],
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
             ),
         ];

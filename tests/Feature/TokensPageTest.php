@@ -48,13 +48,15 @@ it('shows connection snippets', function () {
     tokensUser();
 
     $component = Livewire::test('pages::tokens.index')
-        ->assertSee('claude mcp add --transport http forge https://forge-mcp.test/mcp --header "Authorization: Bearer <token>"')
-        ->assertSee('mcpServers');
+        ->assertSee('claude mcp add --transport http forge-mcp https://forge-mcp.test/mcp --header "Authorization: Bearer <token>"')
+        ->assertSee('mcpServers')
+        ->assertSee('"forge-mcp": {')
+        ->assertDontSee('"forge": {');
 
     $component->set('name', 'x')->call('create');
     $plain = $component->get('plainTextToken');
 
-    $component->assertSee('claude mcp add --transport http forge https://forge-mcp.test/mcp --header "Authorization: Bearer '.$plain.'"');
+    $component->assertSee('claude mcp add --transport http forge-mcp https://forge-mcp.test/mcp --header "Authorization: Bearer '.$plain.'"');
 });
 
 it('revokes a token', function () {
