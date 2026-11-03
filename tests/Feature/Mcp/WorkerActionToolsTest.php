@@ -12,6 +12,7 @@ use App\Models\AuditEntry;
 use App\Permissions\Capability;
 use App\Permissions\ScopeType;
 use App\Permissions\Target;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -349,4 +350,31 @@ it('update_worker with config is allowed with a server grant', function () {
 
     ForgeServer::actingAs($user)->tool(UpdateWorker::class, ['server_id' => 1, 'worker_id' => 5, 'name' => 'n', 'config' => '[program:x]'])->assertOk();
     expect(wrkSent('PUT', '/background-processes/5'))->toBe(['name' => 'n', 'config' => '[program:x]']);
+});
+
+it('a deny on a deeper site below the worker directory denies even when a shorter root contains it', function () {
+    ForgeClient::flushCache();
+    Http::swap(new HttpFactory); // the beforeEach stubs would match first
+    Http::fake([
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/30/actions' => Http::response('', 202),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/30' => Http::response(['data' => ['id' => '30', 'type' => 'background-processes', 'attributes' => ['command' => 'php artisan queue:work', 'directory' => '/x/current']]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
+            ['id' => 21, 'name' => 'a.test', 'server_id' => 1, 'root_directory' => '/x'],
+            ['id' => 22, 'name' => 'b.test', 'server_id' => 1, 'root_directory' => '/x/current/public'],
+        ])),
+        'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [['id' => 1, 'name' => 'web-1']])),
+    ]);
+
+    $user = wrkUser([
+        [Capability::ManageWorkers, ScopeType::Global, new Target, true],
+        [Capability::ManageWorkers, ScopeType::Site, new Target('acme', 1, 22), false],
+    ]);
+
+    ForgeServer::actingAs($user)->tool(RestartWorker::class, ['server_id' => 1, 'worker_id' => 30])
+        ->assertHasErrors(['not permitted on site 22']);
+    wrkAssertNoWrite(30);
+
+    // Allowed on both candidate sites: the restart goes through.
+    $user = wrkUser([[Capability::ManageWorkers, ScopeType::Global, new Target, true]]);
+    ForgeServer::actingAs($user)->tool(RestartWorker::class, ['server_id' => 1, 'worker_id' => 30])->assertOk();
 });

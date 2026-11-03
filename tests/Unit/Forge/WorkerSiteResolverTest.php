@@ -71,3 +71,9 @@ it('candidateSiteIds fails closed with every site under an ambiguous directory',
 
     expect(WorkerSiteResolver::candidateSiteIds($client, 'acme', 1, ['directory' => '/home/forge']))->toBe([1, 2]);
 });
+
+it('candidateSiteIds keeps deeper sites below the directory alongside the containing site', function () {
+    $client = resolverSites([1 => '/x', 2 => '/x/current/public', 3 => '/y/current/public']);
+
+    expect(WorkerSiteResolver::candidateSiteIds($client, 'acme', 1, ['directory' => '/x/current']))->toBe([1, 2]);
+});

@@ -9,9 +9,10 @@ final class WorkerSiteResolver
 {
     /**
      * Sites a worker may belong to, for permission checks. Forge does not say, so this fails closed:
-     * an explicit site id wins; else the single longest site root containing the worker directory;
-     * else every site whose root lies under the directory (a worker run from `.../current` with the
-     * site root at `.../current/public`); else none, meaning server-level rules apply.
+     * an explicit site id wins; else the longest site root containing the worker directory plus every
+     * site whose root lies under the directory (a worker run from `.../current` with a site root at
+     * `.../current/public`, even when a shorter root also contains it); else none, meaning
+     * server-level rules apply.
      *
      * @param  array<string, mixed>  $worker  a flattened background-process record
      * @return list<int>
@@ -48,7 +49,7 @@ final class WorkerSiteResolver
             }
         }
 
-        return $containing !== null ? [$containing] : $below;
+        return array_values(array_unique([...($containing !== null ? [$containing] : []), ...$below]));
     }
 
     /** Trailing slashes removed; the filesystem root normalises to '' (matches nothing). */
