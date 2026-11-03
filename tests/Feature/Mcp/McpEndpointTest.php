@@ -68,7 +68,7 @@ it('fresh token sees only read tools in tools/list', function () {
 
     $response = mcpPost('tools/list', bearer: $new->plainTextToken)->assertOk();
 
-    expect(mcpToolNames($response))->toBe(['list_organizations', 'list_servers', 'get_server', 'list_sites', 'get_site', 'get_deployment_status', 'list_deployments', 'get_deployment_log', 'get_site_log', 'list_workers', 'get_worker_log', 'get_command_result', 'get_deployment_script', 'get_integration_status', 'list_scheduled_jobs', 'get_scheduled_job_output', 'list_server_events', 'get_server_event_output']);
+    expect(mcpToolNames($response))->toBe(['list_organizations', 'list_servers', 'get_server', 'list_sites', 'get_site', 'get_deployment_status', 'list_deployments', 'get_deployment_log', 'get_site_log', 'list_workers', 'get_worker_log', 'get_command_result', 'get_deployment_script', 'get_integration_status', 'list_scheduled_jobs', 'get_scheduled_job_output', 'list_server_events', 'get_server_event_output', 'get_maintenance_mode']);
 });
 
 it('identifies itself as Forge MCP with discovery instructions', function () {

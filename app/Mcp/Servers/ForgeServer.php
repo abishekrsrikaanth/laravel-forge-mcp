@@ -8,11 +8,14 @@ use App\Mcp\Prompts\DiagnoseFailedDeploy;
 use App\Mcp\Tools\CreateWorker;
 use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
+use App\Mcp\Tools\DisableMaintenanceMode;
+use App\Mcp\Tools\EnableMaintenanceMode;
 use App\Mcp\Tools\GetCommandResult;
 use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentScript;
 use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetIntegrationStatus;
+use App\Mcp\Tools\GetMaintenanceMode;
 use App\Mcp\Tools\GetScheduledJobOutput;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetServerEventOutput;
@@ -31,6 +34,7 @@ use App\Mcp\Tools\RebootServer;
 use App\Mcp\Tools\ResetDeploymentState;
 use App\Mcp\Tools\RestartNginx;
 use App\Mcp\Tools\RestartPhpFpm;
+use App\Mcp\Tools\RestartService;
 use App\Mcp\Tools\RestartWorker;
 use App\Mcp\Tools\RunSiteCommand;
 use App\Mcp\Tools\SetQuickDeploy;
@@ -97,6 +101,10 @@ class ForgeServer extends Server
         GetScheduledJobOutput::class,
         ListServerEvents::class,
         GetServerEventOutput::class,
+        RestartService::class,
+        GetMaintenanceMode::class,
+        EnableMaintenanceMode::class,
+        DisableMaintenanceMode::class,
     ];
 
     protected array $prompts = [
