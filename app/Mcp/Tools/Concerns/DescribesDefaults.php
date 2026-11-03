@@ -6,6 +6,9 @@ namespace App\Mcp\Tools\Concerns;
 
 use App\Forge\ForgeException;
 use App\Mcp\Support\ToolContext;
+use App\Permissions\Capability;
+use App\Permissions\PermissionEngine;
+use App\Permissions\Target;
 
 /** Formats default organization/server/site values for tool output, naming ids from the cached Forge lists only. */
 trait DescribesDefaults
@@ -31,6 +34,7 @@ trait DescribesDefaults
             $org = count($exposed) === 1 ? $exposed[0] : null;
         }
         $canName = $org !== null && $ctx->connection->exposes($org);
+        $engine = app(PermissionEngine::class);
 
         $parts = [];
         if ($organization !== null) {
@@ -38,12 +42,15 @@ trait DescribesDefaults
         }
 
         if ($serverId !== null) {
-            $name = $canName ? $this->cachedName(fn () => $ctx->forge->servers($org), $serverId) : null;
+            // Names only for targets the token may View; defaults can be client-chosen or stale.
+            $name = $canName && $engine->allows($ctx->token, Capability::View, new Target($org, $serverId))
+                ? $this->cachedName(fn () => $ctx->forge->servers($org), $serverId) : null;
             $parts[] = 'server '.($name !== null ? "{$name} ({$serverId})" : $serverId);
         }
 
         if ($siteId !== null && $serverId !== null) {
-            $name = $canName ? $this->cachedName(fn () => $ctx->forge->sites($org, $serverId), $siteId) : null;
+            $name = $canName && $engine->allows($ctx->token, Capability::View, new Target($org, $serverId, $siteId))
+                ? $this->cachedName(fn () => $ctx->forge->sites($org, $serverId), $siteId) : null;
             $parts[] = 'site '.($name !== null ? "{$name} ({$siteId})" : $siteId);
         }
 

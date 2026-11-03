@@ -273,3 +273,42 @@ it('diagnose_failed_deploy does not apply defaults of another organization or an
     ForgeServer::actingAs($user)->prompt(DiagnoseFailedDeploy::class, [])
         ->assertHasErrors(["Organization 'gamma' is not available."]);
 });
+
+it('get_defaults names only servers and sites the token can View', function () {
+    dtFakes();
+    [, , $bearer] = dtOwner(default: ['organization' => 'acme', 'server_id' => 1, 'site_id' => 13], grants: [
+        [Capability::View, ScopeType::Site, new Target('acme', 1, 13), false],
+        [Capability::View, ScopeType::Server, new Target('acme', 2), false],
+    ]);
+
+    // Stored default: site 13 denied -> bare id; server 1 viewable -> named.
+    $text = dtCall($bearer, 'get_defaults')[1];
+    expect($text)->toContain('server web-1 (1) / site 13.')->and($text)->not->toContain('site-13.test');
+
+    // Header default naming a denied server and site.
+    $text = dtCall($bearer, 'get_defaults', [], ['X-Forge-Organization' => 'acme', 'X-Forge-Server' => '2', 'X-Forge-Site' => '22'])[1];
+    expect($text)->toContain('acme / server 2 / site 22.')->and($text)->not->toContain('web-2')->and($text)->not->toContain('site-22.test');
+    expect($text)->toContain('Stored on this token (overridden by project headers): acme / server web-1 (1) / site 13.');
+});
+
+it('diagnose_failed_deploy compares string prompt arguments with integer defaults', function () {
+    [$user] = dtOwner(default: ['organization' => 'acme', 'server_id' => 1, 'site_id' => 12]);
+
+    ForgeServer::actingAs($user)->prompt(DiagnoseFailedDeploy::class, ['server_id' => '1'])
+        ->assertSee('site 12 on server 1');
+});
+
+it('diagnose_failed_deploy requires an organization when several are exposed and none is defaulted', function () {
+    [$user] = dtOwner(['acme', 'beta']);
+
+    ForgeServer::actingAs($user)->prompt(DiagnoseFailedDeploy::class, ['server_id' => 1, 'site_id' => 12])
+        ->assertHasErrors(['Several organizations are available (acme, beta). Pass the `organization` argument.']);
+});
+
+it('clear_defaults leaves the row alone when a project header is invalid', function () {
+    dtFakes();
+    [, , $bearer] = dtOwner(default: ['organization' => 'acme', 'server_id' => 1]);
+
+    [$isError, $text] = dtCall($bearer, 'clear_defaults', [], ['X-Forge-Server' => 'abc']);
+    expect($isError)->toBeTrue()->and($text)->toBe('Invalid X-Forge-Server header.')->and(TokenDefault::query()->count())->toBe(1);
+});

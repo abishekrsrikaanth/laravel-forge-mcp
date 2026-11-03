@@ -33,12 +33,13 @@ class ClearDefaults extends ForgeTool
     protected function execute(Request $request): Response
     {
         return $this->guarded($request, new Target, function (ToolContext $ctx) use ($request) {
+            $headersActive = Defaults::resolve($request, $ctx->token)->source === 'header'; // may throw: resolve before deleting
             $deleted = TokenDefault::query()->where('personal_access_token_id', $ctx->token->getKey())->delete() > 0;
             $ctx->summary = $deleted ? 'Cleared token defaults.' : 'No token defaults to clear.';
 
             $message = $deleted ? 'Defaults cleared for this access token.' : 'This access token has no stored defaults.';
 
-            if (Defaults::resolve($request, $ctx->token)->source === 'header') {
+            if ($headersActive) {
                 $message .= ' Project headers still apply and override any token defaults.';
             }
 

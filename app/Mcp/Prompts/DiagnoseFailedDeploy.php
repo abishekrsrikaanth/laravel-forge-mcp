@@ -66,9 +66,13 @@ class DiagnoseFailedDeploy extends Prompt
         $explicitOrg = is_string($requested) && $requested !== '';
         $org = $explicitOrg ? $requested : $defaults?->organization;
         $organization = '';
+        $exposed = $user instanceof User ? ($user->forgeConnection?->exposedOrganizations() ?? []) : [];
+
+        if ($org === null && count($exposed) > 1) {
+            return Response::error('Several organizations are available ('.implode(', ', $exposed).'). Pass the `organization` argument.');
+        }
 
         if ($org !== null) {
-            $exposed = $user instanceof User ? ($user->forgeConnection?->exposedOrganizations() ?? []) : [];
 
             if (! in_array($org, $exposed, true)) {
                 // Never interpolate unvetted text: it would land in the agent's instructions.
@@ -83,8 +87,10 @@ class DiagnoseFailedDeploy extends Prompt
         // Same rules as ForgeTool: a default applies unless the default organization differs from the one in use.
         $defaultsApply = $defaults !== null && ($defaults->organization === null || $defaults->organization === $org);
 
-        $serverId = $data['server_id'] ?? ($defaultsApply ? $defaults->serverId : null);
-        $siteId = $data['site_id'] ?? ($defaultsApply && $defaults->serverId === $serverId ? $defaults->siteId : null);
+        $serverId = isset($data['server_id']) ? (int) $data['server_id'] : ($defaultsApply ? $defaults->serverId : null);
+        $siteId = isset($data['site_id'])
+            ? (int) $data['site_id']
+            : ($defaultsApply && $defaults->serverId === $serverId ? $defaults->siteId : null);
 
         if ($serverId === null || $siteId === null) {
             return Response::error('server_id and site_id are required (no default site is configured).');
