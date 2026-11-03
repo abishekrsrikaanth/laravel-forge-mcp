@@ -61,7 +61,10 @@ it('follows cursor pagination', function () {
 });
 
 it('stops after 20 pages', function () {
-    Http::fake(['*' => Http::response(['data' => [['id' => '1', 'type' => 'servers', 'attributes' => []]], 'meta' => ['next_cursor' => 'again']])]);
+    $n = 0;
+    Http::fake(function () use (&$n) {
+        return Http::response(['data' => [['id' => '1', 'type' => 'servers', 'attributes' => []]], 'meta' => ['next_cursor' => 'c'.++$n]]);
+    });
 
     (new ForgeClient('tkn'))->servers('acme');
 
