@@ -24,7 +24,9 @@ yarn-error.log
 /.zed
 /.agents
 /.amp
-/.claude
+/.claude/*
+!/.claude/settings.json
+/.superpowers/
 /.codex
 /.cursor
 /.factory
