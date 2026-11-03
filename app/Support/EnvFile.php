@@ -94,7 +94,7 @@ final class EnvFile
                 unset($entries[$i]);
             }
 
-            if ($entries[$last]['value'] !== $value) {
+            if ($entries[$last]['value'] !== $value || self::mayInterpolate($entries[$last])) {
                 $entries[$last]['raw'] = $entries[$last]['head'].self::format($value, $eol).$entries[$last]['eol'];
                 $entries[$last]['value'] = $value;
                 $changed[] = $key;
@@ -115,6 +115,20 @@ final class EnvFile
         }
 
         return new EnvChange($out, $added, $changed, $removed);
+    }
+
+    /**
+     * Whether the entry's raw (on-disk) value could be changed by dotenv's ${VAR} interpolation, so
+     * its parsed value is not what the app sees and an "unchanged" write must still be rewritten.
+     * Single-quoted values are literal and never interpolate.
+     *
+     * @param  array{raw: string, head: string}  $entry
+     */
+    private static function mayInterpolate(array $entry): bool
+    {
+        $raw = ltrim(substr($entry['raw'], strlen($entry['head'])));
+
+        return str_contains($raw, '$') && ! str_starts_with($raw, "'");
     }
 
     private static function validKey(string $key): string
@@ -240,8 +254,12 @@ final class EnvFile
 
     private static function unquoted(string $rest): string
     {
+        // As phpdotenv: in an unquoted value `#` starts a comment even without preceding whitespace.
         $rest = rtrim($rest, "\r\n");
-        $rest = preg_replace('/(^|\s)#.*$/', '', $rest) ?? $rest;
+        $hash = strpos($rest, '#');
+        if ($hash !== false) {
+            $rest = substr($rest, 0, $hash);
+        }
 
         return trim($rest);
     }

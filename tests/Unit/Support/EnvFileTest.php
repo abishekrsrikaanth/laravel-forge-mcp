@@ -15,7 +15,8 @@ it('parses the common dotenv forms', function (string $input, array $expected) {
     'hash inside single quotes kept' => ["A='a # b'", ['A' => 'a # b']],
     'inline comment on unquoted' => ['A=value # note', ['A' => 'value']],
     'inline comment after quoted' => ['A="v w" # note', ['A' => 'v w']],
-    'hash without space is part of value' => ['A=ab#cd', ['A' => 'ab#cd']],
+    'hash without space starts a comment (as phpdotenv)' => ['A=ab#cd', ['A' => 'ab']],
+    'value that is only a comment' => ['A=#x', ['A' => '']],
     'export prefix' => ["export A=1\nexport B=\"x y\"", ['A' => '1', 'B' => 'x y']],
     'empty value' => ["A=\nB=''\nC=\"\"", ['A' => '', 'B' => '', 'C' => '']],
     'comments and blanks' => ["# c\n\nA=1\n  # indented\n", ['A' => '1']],
@@ -26,6 +27,12 @@ it('parses the common dotenv forms', function (string $input, array $expected) {
     'last duplicate wins' => ["A=1\nA=2", ['A' => '2']],
     'unterminated quote does not swallow file' => ["A=\"oops\nB=2", ['A' => '"oops', 'B' => '2']],
 ]);
+
+it('matches phpdotenv for unquoted, quoted and commented values', function () {
+    $env = "A=ab#cd\nB=x # y\nC=#only\nD=\"q#r\" # c\nE='s#t'\nF=plain\nG=a=b#c\n";
+
+    expect(EnvFile::parse($env))->toBe(Dotenv\Dotenv::parse($env));
+});
 
 it('parses multi-line double-quoted values', function () {
     $pem = "-----BEGIN KEY-----\nabc\ndef\n-----END KEY-----";
@@ -50,6 +57,23 @@ it('does not report unchanged values and leaves their line byte-identical', func
     $env = "A=\"x y\"  # keep\nB=2\n";
 
     $change = EnvFile::apply($env, ['A' => 'x y'], []);
+
+    expect($change->contents)->toBe($env)->and($change->changed)->toBe([]);
+});
+
+it('rewrites an unchanged value whose raw form may interpolate', function (string $env, string $expected) {
+    $change = EnvFile::apply($env, ['A' => '${B}x'], []);
+
+    expect($change->contents)->toBe($expected)->and($change->changed)->toBe(['A']);
+})->with([
+    'unquoted' => ["A=\${B}x\n", "A='\${B}x'\n"],
+    'double quoted' => ["A=\"\${B}x\"\n", "A='\${B}x'\n"],
+]);
+
+it('leaves an unchanged single-quoted dollar value alone (single quotes never interpolate)', function () {
+    $env = "A='\${B}x'\n";
+
+    $change = EnvFile::apply($env, ['A' => '${B}x'], []);
 
     expect($change->contents)->toBe($env)->and($change->changed)->toBe([]);
 });
