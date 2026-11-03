@@ -3,8 +3,10 @@
 use App\Forge\ForgeClient;
 use App\Forge\ForgeException;
 use App\Models\ForgeConnection;
+use App\Permissions\Capability;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,29 +17,26 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
     /** @var list<string> */
     public array $exposed = [];
 
-    /** @var array<string, string> Forge token scope => what it enables */
-    public array $scopes = [
-        'server:view' => 'Browse servers and sites, check deploy status, and read .env so secrets can be scrubbed from output.',
-        'server:manage-logs' => 'Read site logs.',
-        'site:manage-deploys' => 'Deploy, read deployment logs and the deployment script, and toggle quick deploy.',
-        'server:manage-services' => 'Restart services and reboot servers.',
-        'server:create-daemons' => 'Create queue workers (background processes).',
-        'server:delete-daemons' => 'Delete queue workers (background processes).',
-        'site:manage-environment' => 'Edit the .env file.',
-        'site:manage-commands' => 'Run commands and toggle maintenance mode.',
-    ];
-
     public function mount(): void
     {
-        $this->exposed = $this->connection()?->exposedOrganizations() ?? [];
+        $this->exposed = $this->connection?->exposedOrganizations() ?? [];
     }
 
     public function connect(): void
     {
-        $token = trim($this->token);
+        // The typed token must never survive into the rendered snapshot, whatever happens below.
+        try {
+            $this->token = trim($this->token);
+            $this->validate(['token' => ['required', 'string', 'min:8', 'max:2048']]);
 
-        $this->validate(['token' => ['required', 'string', 'min:8', 'max:2048']]);
+            $this->storeToken($this->token);
+        } finally {
+            $this->token = '';
+        }
+    }
 
+    private function storeToken(string $token): void
+    {
         try {
             $client = new ForgeClient($token);
             $me = $client->me();
@@ -46,7 +45,6 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
                 $client->organizations(),
             );
         } catch (ForgeException $e) {
-            $this->token = '';
             $this->addError('token', $e->status === 401 ? 'Forge rejected this token.' : 'Could not validate the token with Forge: '.$e->agentMessage());
 
             return;
@@ -55,7 +53,7 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
         $organizations = array_values(array_filter($organizations, fn (array $org) => $org['slug'] !== ''));
         $exposed = count($organizations) === 1 ? [$organizations[0]['slug']] : [];
 
-        $previous = $this->connection();
+        $previous = $this->connection;
         ForgeClient::flushCache();
 
         // Keep a prior selection (limited to orgs the new token can see); otherwise preselect a lone org.
@@ -74,13 +72,13 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
             'validated_at' => now(),
         ]);
 
-        $this->token = '';
-        $this->exposed = $this->connection()?->exposedOrganizations() ?? [];
+        unset($this->connection);
+        $this->exposed = $this->connection?->exposedOrganizations() ?? [];
     }
 
     public function saveExposure(): void
     {
-        $connection = $this->connection();
+        $connection = $this->connection;
 
         if ($connection === null) {
             return;
@@ -98,14 +96,26 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
 
     public function disconnect(): void
     {
-        $this->connection()?->delete();
+        $this->connection?->delete();
+        unset($this->connection);
         ForgeClient::flushCache();
         $this->exposed = [];
     }
 
+    #[Computed]
     public function connection(): ?ForgeConnection
     {
         return Auth::user()->forgeConnection()->first();
+    }
+
+    /** @return array<string, string> Forge token scope => labels of the capabilities that need it */
+    #[Computed]
+    public function scopes(): array
+    {
+        return array_map(
+            fn (array $capabilities) => implode(', ', array_map(fn (Capability $c) => $c->label(), $capabilities)),
+            Capability::requiredForgeScopes(),
+        );
     }
 };
 ?>
@@ -116,7 +126,7 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
         <flux:text class="mt-1">{{ __('Your Forge API token is stored encrypted and is never shown again.') }}</flux:text>
     </div>
 
-    @php($connection = $this->connection())
+    @php($connection = $this->connection)
 
     @if ($connection)
         <flux:card class="flex flex-col gap-4">
@@ -172,14 +182,14 @@ new #[Layout('layouts::app'), Title('Forge connection')] class extends Component
     <div class="flex flex-col gap-3">
         <div>
             <flux:heading size="lg">{{ __('Required token scopes') }}</flux:heading>
-            <flux:text>{{ __('Grant the token only the scopes for the tools you want to use. Reading .env for secret scrubbing needs server:view.') }}</flux:text>
+            <flux:text>{{ __('Grant the token only the scopes for the capabilities you want to use. Reading .env for secret scrubbing needs server:view.') }}</flux:text>
         </div>
 
         <dl class="flex flex-col gap-2">
-            @foreach ($scopes as $scope => $description)
+            @foreach ($this->scopes as $scope => $capabilities)
                 <div class="flex flex-col gap-1 sm:flex-row sm:gap-4">
                     <dt class="font-mono text-sm sm:w-64 sm:shrink-0">{{ $scope }}</dt>
-                    <dd class="text-sm text-zinc-600 dark:text-zinc-400">{{ $description }}</dd>
+                    <dd class="text-sm text-zinc-600 dark:text-zinc-400">{{ $capabilities }}</dd>
                 </div>
             @endforeach
         </dl>

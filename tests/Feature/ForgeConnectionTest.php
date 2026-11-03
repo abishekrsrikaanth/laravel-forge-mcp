@@ -5,8 +5,10 @@ use App\Forge\ForgeClientFactory;
 use App\Forge\ForgeNotConnectedException;
 use App\Models\ForgeConnection;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Livewire\Features\SupportComputed\CannotCallComputedDirectlyException;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -126,6 +128,57 @@ it('lists required Forge scopes per capability', function () {
     foreach (['server:view', 'server:manage-logs', 'site:manage-deploys', 'server:manage-services', 'server:create-daemons', 'server:delete-daemons', 'site:manage-environment', 'site:manage-commands'] as $scope) {
         $page->assertSee($scope);
     }
+    $page->assertSee('Reading .env for secret scrubbing needs server:view.')
+        ->assertSee('Configure workers')
+        ->assertSee('Reboot server')
+        ->assertSee('Maintenance mode');
+});
+
+it('clears the typed token when validation fails', function () {
+    actingAs(User::factory()->create());
+
+    Livewire::test('pages::forge')
+        ->set('token', 'zq7Kp2x')
+        ->call('connect')
+        ->assertHasErrors(['token' => 'min'])
+        ->assertSet('token', '')
+        ->assertDontSee('zq7Kp2x');
+
+    Http::assertNothingSent();
+});
+
+it('validates the trimmed token', function () {
+    actingAs(User::factory()->create());
+
+    Livewire::test('pages::forge')
+        ->set('token', '   zq7Kp2   ')
+        ->call('connect')
+        ->assertHasErrors(['token' => 'min'])
+        ->assertSet('token', '');
+
+    Http::assertNothingSent();
+});
+
+it('clears the typed token when Forge is unreachable', function () {
+    Http::fake(['forge.laravel.com/*' => fn () => throw new ConnectionException('down')]);
+    actingAs(User::factory()->create());
+
+    Livewire::test('pages::forge')
+        ->set('token', CONN_TOKEN)
+        ->call('connect')
+        ->assertHasErrors(['token'])
+        ->assertSet('token', '')
+        ->assertDontSee(CONN_TOKEN);
+});
+
+it('does not expose the connection or scope list to the client', function () {
+    connect();
+
+    $component = Livewire::test('pages::forge');
+    expect(array_keys($component->instance()->all()))->not->toContain('scopes')->not->toContain('connection');
+
+    expect(fn () => $component->call('connection'))->toThrow(CannotCallComputedDirectlyException::class)
+        ->and(fn () => $component->set('scopes', ['evil' => 'x']))->toThrow('Public property [$scopes] not found');
 });
 
 it('requires auth', function () {
