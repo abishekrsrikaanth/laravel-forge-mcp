@@ -330,7 +330,8 @@ abstract class ForgeTool extends Tool
     /**
      * The target governing a background process. Its site is inferred (see WorkerSiteResolver), so every
      * candidate site must permit $capability: the first candidate that does not is returned so guarded()
-     * denies on it. With no candidates the server-level target is returned; otherwise the first candidate.
+     * denies on it. With no candidates the server-level target is returned; otherwise the first candidate,
+     * and every candidate is recorded in $ctx->scrubSiteIds so output is scrubbed with all their secrets.
      *
      * @param  array<string, mixed>  $worker  flattened background-process record
      */
@@ -349,6 +350,9 @@ abstract class ForgeTool extends Tool
                 return new Target($org, $serverId, $siteId);
             }
         }
+
+        // The output may come from any candidate site, so every candidate's secrets are scrubbed.
+        $ctx->scrubSiteIds = $candidates;
 
         return new Target($org, $serverId, $candidates[0]);
     }
@@ -397,9 +401,26 @@ abstract class ForgeTool extends Tool
             return SecretSet::empty();
         }
 
-        return $target->siteId !== null
-            ? SiteSecrets::forSite($ctx->forge, $target->organization, $target->serverId, $target->siteId)
-            : SiteSecrets::forServer($ctx->forge, $target->organization, $target->serverId);
+        if ($target->siteId === null) {
+            return SiteSecrets::forServer($ctx->forge, $target->organization, $target->serverId);
+        }
+
+        $set = SecretSet::empty();
+        foreach ($this->scrubSites($ctx, $target) as $siteId) {
+            $set = $set->merge(SiteSecrets::forSite($ctx->forge, $target->organization, $target->serverId, $siteId));
+        }
+
+        return $set;
+    }
+
+    /**
+     * The site target's id plus any further sites the target closure recorded in $ctx->scrubSiteIds.
+     *
+     * @return list<int>
+     */
+    private function scrubSites(ToolContext $ctx, Target $target): array
+    {
+        return array_values(array_unique([...($target->siteId !== null ? [$target->siteId] : []), ...$ctx->scrubSiteIds]));
     }
 
     private function failed(ToolContext $ctx, Request $request, ?Target $target, string $message, int $started): Response
@@ -434,7 +455,15 @@ abstract class ForgeTool extends Tool
             return null;
         }
 
-        return SiteSecrets::peek($target->organization, $target->siteId);
+        $set = null;
+        foreach ($this->scrubSites($ctx, $target) as $siteId) {
+            $peeked = SiteSecrets::peek($target->organization, $siteId);
+            if ($peeked !== null) {
+                $set = ($set ?? SecretSet::empty())->merge($peeked);
+            }
+        }
+
+        return $set;
     }
 
     /** Log a scrubbed line (never the raw exception, which may hold the Forge token) and return the agent-facing message. */

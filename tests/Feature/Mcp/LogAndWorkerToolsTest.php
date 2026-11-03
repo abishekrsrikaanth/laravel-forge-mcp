@@ -11,6 +11,7 @@ use App\Models\AuditEntry;
 use App\Permissions\Capability;
 use App\Permissions\ScopeType;
 use App\Permissions\Target;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -202,4 +203,26 @@ it('list_workers hides a worker above a denied site root', function () {
         ->assertOk()
         ->assertSee(['queue:work', 'node app.js'])
         ->assertDontSee('php artisan above');
+});
+
+it('get_worker_log of a multi-site worker scrubs secrets of every candidate site', function () use ($logsAllowed) {
+    ForgeClient::flushCache();
+    Http::swap(new Factory); // the beforeEach stubs would match first
+    Http::fake([
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/environment' => Http::response(['data' => ['attributes' => ['content' => "ALPHA_SECRET=alpha-secret-value-1234\n"]]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/13/environment' => Http::response(['data' => ['attributes' => ['content' => "BETA_SECRET=beta-secret-value-5678\n"]]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
+            ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1, 'root_directory' => '/home/forge/alpha.test'],
+            ['id' => 13, 'name' => 'beta.test', 'server_id' => 1, 'root_directory' => '/home/forge/beta.test'],
+        ])),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/9/log' => Http::response(['data' => ['attributes' => ['content' => "a=alpha-secret-value-1234\nb=beta-secret-value-5678\n"]]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/9' => Http::response(['data' => ['id' => '9', 'type' => 'background-processes', 'attributes' => ['command' => 'php artisan queue:work', 'directory' => '/home/forge']]]),
+        'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [['id' => 1, 'name' => 'web-1']])),
+    ]);
+
+    [$user] = logUser([$logsAllowed]);
+
+    ForgeServer::actingAs($user)->tool(GetWorkerLog::class, ['server_id' => 1, 'worker_id' => 9])
+        ->assertOk()
+        ->assertDontSee(['alpha-secret-value-1234', 'beta-secret-value-5678']);
 });
