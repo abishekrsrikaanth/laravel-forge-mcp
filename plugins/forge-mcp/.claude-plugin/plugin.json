@@ -1,0 +1,13 @@
+{
+  "name": "forge-mcp",
+  "version": "1.0.0",
+  "description": "Configure project defaults for Forge MCP and diagnose the latest deployment of a Forge site.",
+  "author": {
+    "name": "Abishek R Srikaanth",
+    "url": "https://github.com/abishekrsrikaanth"
+  },
+  "homepage": "https://github.com/abishekrsrikaanth/laravel-forge-mcp/blob/main/repo-docs/claude-code-plugin.md",
+  "repository": "https://github.com/abishekrsrikaanth/laravel-forge-mcp",
+  "license": "MIT",
+  "keywords": ["laravel", "forge", "mcp", "deployments"]
+}

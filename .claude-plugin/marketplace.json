@@ -1,0 +1,15 @@
+{
+  "name": "laravel-forge-mcp",
+  "owner": {
+    "name": "Abishek R Srikaanth",
+    "url": "https://github.com/abishekrsrikaanth"
+  },
+  "description": "Claude Code plugins for Forge MCP, the self-hosted MCP server for Laravel Forge.",
+  "plugins": [
+    {
+      "name": "forge-mcp",
+      "source": "./plugins/forge-mcp",
+      "description": "Configure project defaults for Forge MCP and diagnose the latest deployment of a Forge site."
+    }
+  ]
+}
