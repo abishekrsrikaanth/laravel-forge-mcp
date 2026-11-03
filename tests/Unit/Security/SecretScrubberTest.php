@@ -301,3 +301,16 @@ it('scans many unterminated private key headers in linear time', function () {
     expect(microtime(true) - $started)->toBeLessThan(5.0)
         ->and($scrubbed)->toBe(str_repeat("[REDACTED]\n", 50_000));
 });
+
+it('masks CLI password flags conservatively', function (string $text, string $expected) {
+    expect(scrubWith($text))->toBe($expected);
+})->with([
+    'mysql -p' => ['mysql -uforge -pSecret123 db', 'mysql -uforge -p[REDACTED] db'],
+    'mysqldump quoted' => ["mysqldump -u root -p'my pass' db > a.sql", 'mysqldump -u root -p[REDACTED] db > a.sql'],
+    'mariadb' => ['mariadb -h x -pSecret123', 'mariadb -h x -p[REDACTED]'],
+    '--password=' => ['tool --password=hunter22 run', 'tool --password=[REDACTED] run'],
+    '--password space' => ['tool --password hunter22 run', 'tool --password [REDACTED] run'],
+    'mkdir -p untouched' => ['mkdir -p storage/app/dir', 'mkdir -p storage/app/dir'],
+    'mysql prompt untouched' => ['mysql -u forge -p db', 'mysql -u forge -p db'],
+    'cp -p untouched' => ['cp -pr a b', 'cp -pr a b'],
+]);

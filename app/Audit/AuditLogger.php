@@ -12,7 +12,7 @@ use App\Security\SecretSet;
 
 /**
  * Writes one audit row per MCP tool call. The summary and every string argument are scrubbed
- * (the Forge API token plus the scrubber's token/assignment patterns) before they are stored.
+ * (the Forge API token, the target's known secrets when the caller supplies them, plus the scrubber's token/assignment patterns) before they are stored.
  * Callers pass arguments already reduced by the tool's redactArguments().
  */
 final readonly class AuditLogger
@@ -22,9 +22,9 @@ final readonly class AuditLogger
     public function __construct(private SecretScrubber $scrubber) {}
 
     /** @param  array<string, mixed>  $arguments */
-    public function record(ToolContext $ctx, string $tool, ?Target $target, string $outcome, string $summary, array $arguments, int $durationMs): void
+    public function record(ToolContext $ctx, string $tool, ?Target $target, string $outcome, string $summary, array $arguments, int $durationMs, ?SecretSet $secrets = null): void
     {
-        $secrets = self::forgeTokenSecret($ctx);
+        $secrets = self::forgeTokenSecret($ctx)->merge($secrets ?? SecretSet::empty());
 
         AuditEntry::query()->create([
             'user_id' => $ctx->user->getKey(),

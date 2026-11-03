@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
-function cmdRecord(array $attrs = []): array
+function cmdRecord(array $attrs = [], string $id = '88'): array
 {
-    return ['id' => '88', 'type' => 'commands', 'attributes' => $attrs + [
+    return ['id' => $id, 'type' => 'commands', 'attributes' => $attrs + [
         'command' => 'php artisan migrate --force',
         'status' => 'finished',
         'exit_code' => 0,
@@ -28,12 +28,14 @@ function cmdRecord(array $attrs = []): array
  * @param  list<string>  $statuses  successive statuses of command 88
  * @param  list<array<string, mixed>>|null  $listed  override the commands listing
  */
-function cmdFakes(array $statuses = ['finished'], string $output = "migrating\ndone\n", ?array $listed = null, bool $recordFails = false, array $extra = []): void
+function cmdFakes(array $statuses = ['finished'], string $output = "migrating\ndone\n", ?array $listed = null, bool $recordFails = false, array $extra = [], ?array $before = null, bool $listFailsAfterPost = false): void
 {
     ForgeClient::flushCache();
     Cache::flush();
     Carbon::setTestNow('2026-11-03 10:00:00');
 
+    $state = new stdClass;
+    $state->posted = false;
     $seq = Http::sequence();
     foreach ($statuses as $status) {
         $seq->push(['data' => cmdRecord(['status' => $status] + $extra)]);
@@ -43,12 +45,23 @@ function cmdFakes(array $statuses = ['finished'], string $output = "migrating\nd
     Http::fake([
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands/88/output' => Http::response(['data' => ['attributes' => ['output' => $output]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands/88' => $recordFails ? Http::response(['message' => 'boom'], 500) : $seq,
-        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands*' => fn ($request) => $request->method() === 'POST'
-            ? Http::response('', 202)
-            : Http::response(['data' => $listed ?? [
-                cmdRecord(['command' => 'ls', 'created_at' => '2026-11-03T09:00:00Z']) + ['id' => '87'],
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands*' => function ($request) use ($listed, $before, $listFailsAfterPost, $state) {
+            if ($request->method() === 'POST') {
+                $state->posted = true;
+
+                return Http::response('', 202);
+            }
+            if ($state->posted && $listFailsAfterPost) {
+                return Http::response(['message' => 'boom'], 500);
+            }
+
+            $default = [
+                cmdRecord(['command' => 'ls', 'created_at' => '2026-11-03T09:00:00Z'], '87'),
                 cmdRecord(),
-            ]]),
+            ];
+
+            return Http::response(['data' => $state->posted ? ($listed ?? $default) : ($before ?? [$default[0]])]);
+        },
         'forge.laravel.com/api/orgs/acme/servers/1/sites/12/environment' => Http::response(['data' => ['attributes' => ['content' => "APP_KEY=base64:supersecretvalue123456\n"]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
             ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1],
@@ -110,7 +123,7 @@ it('run_site_command reports when the command id cannot be determined', function
     cmdFakes(listed: [
         cmdRecord(['command' => 'something else']),
         cmdRecord(['created_at' => '2026-11-03T09:00:00Z']),
-    ]);
+    ], before: []);
 
     ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
         ->assertOk()
@@ -191,3 +204,88 @@ it('get_command_result needs view_logs only', function () use ($args) {
 
     ForgeServer::actingAs($user)->tool(GetCommandResult::class, $args + ['command_id' => 88])->assertOk();
 });
+
+it('run_site_command tells the agent the command was queued when the id lookup fails', function () use ($run) {
+    Sleep::fake();
+    cmdFakes(listFailsAfterPost: true);
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
+        ->assertOk()
+        ->assertSee(['Command was queued, but looking up its id failed', "Check the site's commands in Forge before running it again."]);
+
+    expect(AuditEntry::query()->sole()->outcome)->toBe('success');
+});
+
+it('run_site_command keeps the queued message on a non-Forge error after queueing', function () use ($run) {
+    Sleep::fake();
+    cmdFakes(extra: ['exit_code' => 0]);
+    Http::fake([
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands/88/output' => fn () => throw new RuntimeException('internal secret detail'),
+    ]);
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
+        ->assertOk()
+        ->assertSee(['Command 88 was queued, but checking its result failed', 'get_command_result with command_id 88'])
+        ->assertDontSee('internal secret detail');
+});
+
+it('run_site_command ignores an identical command that was already queued by someone else', function () use ($run) {
+    Sleep::fake();
+    $theirs = cmdRecord(['created_at' => '2026-11-03T09:59:58Z'], '86');
+    $mine = cmdRecord(['created_at' => '2026-11-03T10:00:01Z'], '88');
+    cmdFakes(listed: [$mine, $theirs], before: [$theirs]);
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
+        ->assertOk()->assertSee('exit 0, status finished');
+
+    Http::assertSent(fn ($r) => str_ends_with($r->url(), '/commands/88'));
+    Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/commands/86'));
+});
+
+it('run_site_command does not guess when only a pre-existing identical command is listed', function () use ($run) {
+    Sleep::fake();
+    $theirs = cmdRecord(['created_at' => '2026-11-03T09:59:58Z'], '86');
+    cmdFakes(listed: [$theirs], before: [$theirs]);
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
+        ->assertOk()->assertSee('could not be determined');
+
+    Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/commands/86'));
+});
+
+it('run_site_command retries the id lookup once after a short sleep', function () use ($run) {
+    Sleep::fake();
+    $lists = 0;
+    $list = function ($request) use (&$lists) {
+        if ($request->method() === 'POST') {
+            return Http::response('', 202);
+        }
+        $lists++;
+
+        return Http::response(['data' => $lists === 3 ? [cmdRecord()] : []]);
+    };
+    Http::fake([
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands?*' => $list,
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/12/commands' => $list,
+    ]);
+    cmdFakes();
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, $run)
+        ->assertOk()->assertSee('exit 0, status finished');
+
+    expect($lists)->toBe(3);
+});
+
+it('audit arguments are scrubbed with site secrets and CLI password flags', function (string $command) {
+    Sleep::fake();
+    cmdFakes();
+
+    ForgeServer::actingAs(cmdUser())->tool(RunSiteCommand::class, ['server_id' => 1, 'site_id' => 12, 'command' => $command])
+        ->assertOk();
+
+    $stored = AuditEntry::query()->sole()->arguments['command'];
+    expect($stored)->not->toContain('Secret123')->not->toContain('supersecretvalue123456')->toContain('[REDACTED');
+})->with([
+    'mysql -p' => 'mysql -uforge -pSecret123 db',
+    'env value' => 'echo base64:supersecretvalue123456',
+]);

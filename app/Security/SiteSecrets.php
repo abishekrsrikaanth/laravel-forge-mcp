@@ -123,6 +123,12 @@ final class SiteSecrets
         Cache::forget(self::key($org, $siteId));
     }
 
+    /** The secrets already cached for a site, or null; never calls Forge and never fills the cache. */
+    public static function peek(string $org, int $siteId): ?SecretSet
+    {
+        return self::cached($org, $siteId);
+    }
+
     private static function key(string $org, int $siteId): string
     {
         return "forge-mcp:secrets:{$org}:{$siteId}";

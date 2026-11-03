@@ -75,6 +75,14 @@ final class SecretScrubber
     private const ASSIGNMENT = '/(?<![A-Za-z0-9_.\-])([A-Za-z0-9_.\-]++)'.self::SECRET_KEY_END.'([ \t]*+[=:][ \t]*+)(?![=>])'
         .'("(?:[^"\\\\\r\n]++|\\\\.)*+"|\'[^\'\r\n]*+\'|\$\{[A-Za-z_][A-Za-z0-9_.]*+\}|[^\s,;&"\'<>]*[^\s,;&"\'<>)\]}])/i';
 
+    /** `--password=value`, `--password value` (also `--db-password`), bare, single- or double-quoted. */
+    private const PASSWORD_FLAG = '/(--(?:[a-z]++-)?password(?:=|[ \t]++))(?!\[REDACTED)("[^"\r\n]*+"|\'[^\'\r\n]*+\'|[^\s"\']++)/i';
+
+    /** A mysql-family command up to the end of the pipeline segment; `-p<value>` is masked inside it. */
+    private const MYSQL_COMMAND = '/\b(?:mysql|mysqldump|mysqladmin|mysqlcheck|mysqlimport|mysqlshow|mariadb|mariadb-dump|mariadb-admin)\b[^\r\n|;&]*+/';
+
+    private const MYSQL_PASSWORD = '/(?<=\s)-p(?!\[REDACTED)(?=\S)("[^"\r\n]*+"|\'[^\'\r\n]*+\'|[^\s"\']++)/';
+
     public function scrub(string $text, SecretSet $secrets): string
     {
         if ($text === '') {
@@ -207,6 +215,14 @@ final class SecretScrubber
         $text = $this->guarded($text, fn (string $t): ?string => preg_replace_callback(
             self::JSON_ASSIGNMENT,
             fn (array $m): string => $this->isPlaceholder($m[2]) ? $m[0] : $m[1].'"[REDACTED]"',
+            $t,
+        ));
+
+        $text = $this->guarded($text, fn (string $t): ?string => preg_replace(self::PASSWORD_FLAG, '$1[REDACTED]', $t));
+
+        $text = $this->guarded($text, fn (string $t): ?string => preg_replace_callback(
+            self::MYSQL_COMMAND,
+            fn (array $m): string => preg_replace(self::MYSQL_PASSWORD, '-p[REDACTED]', $m[0]) ?? self::UNSCANNABLE,
             $t,
         ));
 

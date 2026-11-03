@@ -177,7 +177,7 @@ abstract class ForgeTool extends Tool
         }
 
         $summary = $ctx->summary ?? "{$this->capability()->label()} on {$resolved->describe()}.";
-        $this->audit($ctx, $request, $resolved, AuditEntry::SUCCESS, app(SecretScrubber::class)->scrub($summary, $secrets), $started);
+        $this->audit($ctx, $request, $resolved, AuditEntry::SUCCESS, app(SecretScrubber::class)->scrub($summary, $secrets), $started, $scrub ? $secrets : null);
 
         return Response::text($output);
     }
@@ -352,12 +352,12 @@ abstract class ForgeTool extends Tool
     private function failed(ToolContext $ctx, Request $request, ?Target $target, string $message, int $started): Response
     {
         $message = $this->scrubToken($ctx, $message);
-        $this->audit($ctx, $request, $target, AuditEntry::ERROR, $message, $started);
+        $this->audit($ctx, $request, $target, AuditEntry::ERROR, $message, $started, $this->auditSecrets($ctx, $target));
 
         return Response::error($message);
     }
 
-    private function audit(ToolContext $ctx, Request $request, ?Target $target, string $outcome, string $summary, int $started): void
+    private function audit(ToolContext $ctx, Request $request, ?Target $target, string $outcome, string $summary, int $started, ?SecretSet $secrets = null): void
     {
         app(AuditLogger::class)->record(
             $ctx,
@@ -367,7 +367,21 @@ abstract class ForgeTool extends Tool
             $summary,
             $this->redactArguments($request->all()),
             (int) ((hrtime(true) - $started) / 1_000_000),
+            $secrets,
         );
+    }
+
+    /**
+     * Secrets already cached for a site target, for scrubbing audit arguments after a failure. Never
+     * calls Forge and never refills the cache (a failed .env write forgets it on purpose).
+     */
+    private function auditSecrets(ToolContext $ctx, ?Target $target): ?SecretSet
+    {
+        if ($target?->organization === null || $target->siteId === null) {
+            return null;
+        }
+
+        return SiteSecrets::peek($target->organization, $target->siteId);
     }
 
     /** Log a scrubbed line (never the raw exception, which may hold the Forge token) and return the agent-facing message. */

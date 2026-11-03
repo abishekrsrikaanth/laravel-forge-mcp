@@ -11,6 +11,7 @@ use App\Mcp\Tools\Concerns\FormatsCommandResult;
 use App\Permissions\Capability;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Sleep;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -64,18 +65,30 @@ class RunSiteCommand extends ForgeTool
             $request,
             fn (ToolContext $ctx) => $this->siteTarget($ctx, $org, $serverId, $siteId),
             function (ToolContext $ctx) use ($org, $serverId, $siteId, $command) {
+                // Ids already present before we queue anything: a new command is one that is not in here.
+                $known = array_map(fn (array $c) => (int) ($c['id'] ?? 0), $ctx->forge->commands($org, $serverId, $siteId, 5));
                 $since = Carbon::now()->subSeconds(self::CLOCK_SKEW_SECONDS);
 
                 $ctx->forge->runCommand($org, $serverId, $siteId, $command);
                 $ctx->summary = "Ran a command on site {$siteId}.";
 
-                $commandId = $this->findCommandId($ctx, $org, $serverId, $siteId, $command, $since);
+                // From here on the command is queued: every failure must say so (no blind re-run).
+                try {
+                    $commandId = $this->findCommandId($ctx, $org, $serverId, $siteId, $command, $since, $known);
+                } catch (ForgeException $e) {
+                    $ctx->summary = "Ran a command on site {$siteId}: queued, id lookup failed";
+
+                    return "Command was queued, but looking up its id failed: {$e->agentMessage()}. Check the site's commands in Forge before running it again.";
+                } catch (Throwable) {
+                    $ctx->summary = "Ran a command on site {$siteId}: queued, id lookup failed";
+
+                    return "Command was queued, but looking up its id failed unexpectedly. Check the site's commands in Forge before running it again.";
+                }
 
                 if ($commandId === null) {
                     return "Command queued, but its id could not be determined. Check the site's commands in Forge.";
                 }
 
-                // Once queued, a failure must still tell the agent the id (no blind re-run).
                 try {
                     $poll = Poller::until(
                         fn () => $ctx->forge->command($org, $serverId, $siteId, $commandId),
@@ -87,16 +100,48 @@ class RunSiteCommand extends ForgeTool
                     $ctx->summary = "Ran a command on site {$siteId}: queued, result check failed";
 
                     return "Command {$commandId} was queued, but checking its result failed: {$e->agentMessage()}. Call get_command_result with command_id {$commandId}.";
+                } catch (Throwable) {
+                    $ctx->summary = "Ran a command on site {$siteId}: queued, result check failed";
+
+                    return "Command {$commandId} was queued, but checking its result failed unexpectedly. Call get_command_result with command_id {$commandId}.";
                 }
             },
         );
     }
 
-    private function findCommandId(ToolContext $ctx, string $org, int $serverId, int $siteId, string $command, Carbon $since): ?int
+    /**
+     * The new command: not in the pre-queue snapshot, same text, created within the window. Forge may
+     * list it a moment late, so one retry after a short sleep.
+     *
+     * @param  list<int>  $known
+     */
+    private function findCommandId(ToolContext $ctx, string $org, int $serverId, int $siteId, string $command, Carbon $since, array $known): ?int
     {
-        // Newest first; the first match is the newest.
-        foreach ($ctx->forge->commands($org, $serverId, $siteId, 5) as $record) {
-            if (($record['command'] ?? null) !== $command || ! is_numeric($record['id'] ?? null)) {
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            if ($attempt > 0) {
+                Sleep::for(1)->second();
+            }
+
+            $id = $this->matchNewCommand($ctx->forge->commands($org, $serverId, $siteId, 5), $command, $since, $known);
+
+            if ($id !== null) {
+                return $id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $records  newest first
+     * @param  list<int>  $known
+     */
+    private function matchNewCommand(array $records, string $command, Carbon $since, array $known): ?int
+    {
+        foreach ($records as $record) {
+            $id = is_numeric($record['id'] ?? null) ? (int) $record['id'] : 0;
+
+            if ($id === 0 || in_array($id, $known, true) || ($record['command'] ?? null) !== $command) {
                 continue;
             }
 
@@ -107,7 +152,7 @@ class RunSiteCommand extends ForgeTool
             }
 
             if ($created->greaterThanOrEqualTo($since)) {
-                return (int) $record['id'];
+                return $id;
             }
         }
 
