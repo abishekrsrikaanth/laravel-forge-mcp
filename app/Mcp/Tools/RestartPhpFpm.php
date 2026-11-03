@@ -31,7 +31,7 @@ class RestartPhpFpm extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id (from list_servers).'),
+            'server_id' => $schema->integer()->description('Forge server id (from list_servers). Defaults to the configured server if omitted.'),
             'action' => $schema->string()->enum(['reload', 'restart'])->default('reload')->description('reload (default) or restart.'),
             'site_id' => $schema->integer()->description('Optional site id, used only to detect the PHP version.'),
             'version' => $schema->string()->description('PHP version such as php84. Overrides detection.'),
@@ -41,7 +41,7 @@ class RestartPhpFpm extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $action = (string) ($request->get('action') ?? 'reload');
         $siteId = $request->get('site_id') !== null ? (int) $request->get('site_id') : null;
         $explicit = $request->get('version') !== null ? (string) $request->get('version') : null;

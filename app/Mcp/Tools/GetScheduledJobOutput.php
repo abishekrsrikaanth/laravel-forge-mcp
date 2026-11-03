@@ -28,7 +28,7 @@ class GetScheduledJobOutput extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'job_id' => $schema->integer()->required()->description('Scheduled job id (from list_scheduled_jobs).'),
             'site_id' => $schema->integer()->description('Forge site id when the job belongs to a site.'),
             'lines' => $schema->integer()->description('Number of trailing lines to return.'),
@@ -38,7 +38,7 @@ class GetScheduledJobOutput extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $jobId = (int) $request->get('job_id');
         $siteId = $request->get('site_id') !== null ? (int) $request->get('site_id') : null;
         $lines = $request->get('lines') !== null ? (int) $request->get('lines') : null;

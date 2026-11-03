@@ -27,14 +27,14 @@ class RebootServer extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id (from list_servers).'),
+            'server_id' => $schema->integer()->description('Forge server id (from list_servers). Defaults to the configured server if omitted.'),
         ];
     }
 
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
 
         // Always a server-level target: site rules never apply to this capability.
         return $this->guarded(

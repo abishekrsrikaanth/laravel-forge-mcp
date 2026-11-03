@@ -28,7 +28,7 @@ class StartWorker extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'worker_id' => $schema->integer()->required()->description('Background process id (from list_workers).'),
         ];
     }
@@ -36,7 +36,7 @@ class StartWorker extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $workerId = (int) $request->get('worker_id');
 
         return $this->guarded(

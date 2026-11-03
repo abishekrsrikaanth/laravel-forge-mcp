@@ -114,18 +114,20 @@ function mcpFakeOrganizations(): void
 }
 
 /**
- * POST a JSON-RPC request to an MCP endpoint the way an MCP client does.
+ * POST a JSON-RPC request to an MCP endpoint the way an MCP client does. $headers are extra request
+ * headers for this call only (e.g. the X-Forge-* defaults a client sets in its .mcp.json).
  *
  * @param  array<string, mixed>  $params
+ * @param  array<string, string>  $headers
  */
-function mcpPost(string $method, array $params = [], ?string $bearer = null, string $uri = '/mcp'): TestResponse
+function mcpPost(string $method, array $params = [], ?string $bearer = null, string $uri = '/mcp', array $headers = []): TestResponse
 {
-    $headers = ['Accept' => 'application/json, text/event-stream'];
+    $defaults = ['Accept' => 'application/json, text/event-stream'];
     if ($bearer !== null) {
-        $headers['Authorization'] = 'Bearer '.$bearer;
+        $defaults['Authorization'] = 'Bearer '.$bearer;
     }
 
-    return withHeaders($headers)->postJson($uri, ['jsonrpc' => '2.0', 'id' => 1, 'method' => $method] + ($params === [] ? [] : ['params' => $params]));
+    return withHeaders($defaults)->postJson($uri, ['jsonrpc' => '2.0', 'id' => 1, 'method' => $method] + ($params === [] ? [] : ['params' => $params]), $headers);
 }
 
 /**

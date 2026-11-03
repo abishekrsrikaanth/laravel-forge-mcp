@@ -28,7 +28,7 @@ class GetServerEventOutput extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'event_id' => $schema->integer()->required()->description('Event id (from list_server_events).'),
             'lines' => $schema->integer()->description('Number of trailing lines to return.'),
         ];
@@ -37,7 +37,7 @@ class GetServerEventOutput extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $eventId = (int) $request->get('event_id');
         $lines = $request->get('lines') !== null ? (int) $request->get('lines') : null;
 

@@ -27,7 +27,7 @@ class ListScheduledJobs extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'site_id' => $schema->integer()->description('Forge site id; omit to list the server-level jobs.'),
         ];
     }
@@ -35,7 +35,7 @@ class ListScheduledJobs extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $siteId = $request->get('site_id') !== null ? (int) $request->get('site_id') : null;
 
         return $this->guarded(

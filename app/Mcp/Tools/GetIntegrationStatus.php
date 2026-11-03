@@ -30,8 +30,8 @@ class GetIntegrationStatus extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id the site lives on.'),
-            'site_id' => $schema->integer()->required()->description('Forge site id (from list_sites).'),
+            'server_id' => $schema->integer()->description('Forge server id the site lives on. Defaults to the configured server if omitted.'),
+            'site_id' => $schema->integer()->description('Forge site id (from list_sites). Defaults to the configured site if omitted.'),
             'integration' => $schema->string()->enum(self::INTEGRATIONS)->required()->description('Which integration to inspect.'),
         ];
     }
@@ -39,8 +39,8 @@ class GetIntegrationStatus extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
-        $siteId = (int) $request->get('site_id');
+        $serverId = $this->resolveServerId($request, $org);
+        $siteId = $this->resolveSiteId($request, $org, $serverId);
         $integration = (string) $request->get('integration');
 
         if (! in_array($integration, self::INTEGRATIONS, true)) {

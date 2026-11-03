@@ -42,8 +42,8 @@ class EnableMaintenanceMode extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id the site lives on.'),
-            'site_id' => $schema->integer()->required()->description('Forge site id (from list_sites).'),
+            'server_id' => $schema->integer()->description('Forge server id the site lives on. Defaults to the configured server if omitted.'),
+            'site_id' => $schema->integer()->description('Forge site id (from list_sites). Defaults to the configured site if omitted.'),
             'secret' => $schema->string()->description('Optional bypass secret (max 128 characters, no whitespace).'),
             'status' => $schema->integer()->enum(self::STATUSES)->default(503)->description('HTTP status returned to visitors: 304, 307, 410 or 503.'),
             'redirect' => $schema->string()->description('Optional redirect target: a relative path starting with "/" or an http(s) URL.'),
@@ -79,8 +79,8 @@ class EnableMaintenanceMode extends ForgeTool
         ]);
 
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
-        $siteId = (int) $request->get('site_id');
+        $serverId = $this->resolveServerId($request, $org);
+        $siteId = $this->resolveSiteId($request, $org, $serverId);
         $secret = $request->get('secret') !== null ? (string) $request->get('secret') : null;
         $status = (int) ($request->get('status') ?? 503);
         $redirect = $request->get('redirect') !== null ? (string) $request->get('redirect') : null;

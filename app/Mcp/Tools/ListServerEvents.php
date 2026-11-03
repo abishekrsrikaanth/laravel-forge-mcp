@@ -27,7 +27,7 @@ class ListServerEvents extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'limit' => $schema->integer()->description('Number of events to return (default 20, max 50).'),
         ];
     }
@@ -35,7 +35,7 @@ class ListServerEvents extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $limit = min(50, max(1, (int) ($request->get('limit') ?? 20)));
 
         return $this->guarded(

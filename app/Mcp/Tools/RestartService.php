@@ -29,7 +29,7 @@ class RestartService extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id (from list_servers).'),
+            'server_id' => $schema->integer()->description('Forge server id (from list_servers). Defaults to the configured server if omitted.'),
             'service' => $schema->string()->enum(array_keys(self::LABELS))->required()->description('Service to restart.'),
         ];
     }
@@ -39,7 +39,7 @@ class RestartService extends ForgeTool
         $request->validate(['service' => ['required', 'string', 'in:'.implode(',', array_keys(self::LABELS))]]);
 
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $service = (string) $request->get('service');
 
         // Always the server: restarting a service is server-wide, so site-level rules never apply.

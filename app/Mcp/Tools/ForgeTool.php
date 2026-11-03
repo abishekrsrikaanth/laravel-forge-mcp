@@ -9,6 +9,8 @@ use App\Forge\ForgeClientFactory;
 use App\Forge\ForgeException;
 use App\Forge\ForgeNotConnectedException;
 use App\Forge\WorkerSiteResolver;
+use App\Mcp\Support\Defaults;
+use App\Mcp\Support\ResolvedDefaults;
 use App\Mcp\Support\ToolContext;
 use App\Mcp\Support\ToolDenied;
 use App\Mcp\Support\ToolError;
@@ -46,6 +48,12 @@ abstract class ForgeTool extends Tool
 
     public const string NO_TOKEN = 'This tool requires a Forge MCP access token.';
 
+    /** Defaults for the current call (resolved once, lazily); reset by handle(). */
+    private ?ResolvedDefaults $defaults = null;
+
+    /** The source ('header'|'token') of any default that filled a value in the current call; audited as `_defaults`. */
+    private ?string $defaultsUsed = null;
+
     abstract protected function capability(): Capability;
 
     abstract protected function execute(Request $request): Response;
@@ -58,6 +66,8 @@ abstract class ForgeTool extends Tool
     public function handle(Request $request): Response
     {
         $started = hrtime(true);
+        $this->defaults = null;
+        $this->defaultsUsed = null;
 
         try {
             return $this->execute($request);
@@ -190,8 +200,9 @@ abstract class ForgeTool extends Tool
     }
 
     /**
-     * The organization slug to act on: the `organization` argument if it is exposed, or the only
-     * exposed organization when the argument is omitted. Never calls Forge.
+     * The organization slug to act on: the `organization` argument, else the default organization (see
+     * Defaults), else the only exposed organization. An explicit or default organization must be exposed.
+     * Never calls Forge. Invalid X-Forge-* headers are rejected here even when every argument is explicit.
      *
      * @throws ToolError|ToolDenied ToolDenied (audited as `denied`) when the organization is not exposed
      */
@@ -202,7 +213,13 @@ abstract class ForgeTool extends Tool
             throw new ToolError(self::NOT_CONNECTED);
         }
 
+        $defaults = $this->defaults($request);
         $org = $request->get('organization');
+
+        if (($org === null || $org === '') && $defaults->organization !== null) {
+            $org = $defaults->organization;
+            $this->defaultsUsed = $defaults->source;
+        }
 
         if ($org === null || $org === '') {
             return match (count($exposed)) {
@@ -219,6 +236,53 @@ abstract class ForgeTool extends Tool
         }
 
         return $org;
+    }
+
+    /**
+     * The server id to act on: the `server_id` argument, else the default server when the default
+     * organization is unset or equals $org. The id is unverified; build the target with serverTarget(),
+     * siteTarget(), workerTarget() or serverWideTarget() as before.
+     *
+     * @throws ToolError when there is neither
+     */
+    protected function resolveServerId(Request $request, string $org): int
+    {
+        $explicit = $request->get('server_id');
+        if ($explicit !== null && $explicit !== '') {
+            return (int) $explicit;
+        }
+
+        $defaults = $this->defaults($request);
+        if ($defaults->serverId !== null && $this->defaultsApplyTo($defaults, $org)) {
+            $this->defaultsUsed = $defaults->source;
+
+            return $defaults->serverId;
+        }
+
+        throw new ToolError('server_id is required (no default server is configured for this project or token).');
+    }
+
+    /**
+     * The site id to act on: the `site_id` argument, else the default site when the default server equals
+     * $serverId (and the default organization is unset or equals $org). Verify it with siteTarget().
+     *
+     * @throws ToolError when there is neither
+     */
+    protected function resolveSiteId(Request $request, string $org, int $serverId): int
+    {
+        $explicit = $request->get('site_id');
+        if ($explicit !== null && $explicit !== '') {
+            return (int) $explicit;
+        }
+
+        $defaults = $this->defaults($request);
+        if ($defaults->siteId !== null && $defaults->serverId === $serverId && $this->defaultsApplyTo($defaults, $org)) {
+            $this->defaultsUsed = $defaults->source;
+
+            return $defaults->siteId;
+        }
+
+        throw new ToolError("site_id is required (no default site is configured for server {$serverId}).");
     }
 
     /**
@@ -373,6 +437,22 @@ abstract class ForgeTool extends Tool
         return $user instanceof User ? $user->forgeConnection : null;
     }
 
+    /** The defaults for this call; none without an access token. */
+    private function defaults(Request $request): ResolvedDefaults
+    {
+        if ($this->defaults === null) {
+            $token = $this->accessToken($request);
+            $this->defaults = $token !== null ? Defaults::resolve($request, $token) : ResolvedDefaults::none();
+        }
+
+        return $this->defaults;
+    }
+
+    private function defaultsApplyTo(ResolvedDefaults $defaults, string $org): bool
+    {
+        return $defaults->organization === null || $defaults->organization === $org;
+    }
+
     private function context(Request $request): ToolContext|Response
     {
         $user = $request->user();
@@ -440,10 +520,26 @@ abstract class ForgeTool extends Tool
             $target,
             $outcome,
             $summary,
-            $this->redactArguments($request->all()),
+            $this->auditArguments($request),
             (int) ((hrtime(true) - $started) / 1_000_000),
             $secrets,
         );
+    }
+
+    /**
+     * The audited arguments, marked with `_defaults` when a default filled in a value.
+     *
+     * @return array<string, mixed>
+     */
+    private function auditArguments(Request $request): array
+    {
+        $arguments = $this->redactArguments($request->all());
+
+        if ($this->defaultsUsed !== null) {
+            $arguments['_defaults'] = $this->defaultsUsed;
+        }
+
+        return $arguments;
     }
 
     /**

@@ -32,7 +32,7 @@ class UpdateWorker extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'worker_id' => $schema->integer()->required()->description('Background process id (from list_workers).'),
             'name' => $schema->string()->required()->description('New name for the process.'),
             'config' => $schema->string()->description('Raw supervisor configuration to replace the current one (needs the permission on the whole server). Omit to keep it.'),
@@ -44,7 +44,7 @@ class UpdateWorker extends ForgeTool
         $request->validate(['name' => ['required', 'string']]);
 
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $workerId = (int) $request->get('worker_id');
         $name = (string) $request->get('name');
         $config = $request->get('config') !== null ? (string) $request->get('config') : null;

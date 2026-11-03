@@ -27,8 +27,8 @@ class ListDeployments extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id the site lives on.'),
-            'site_id' => $schema->integer()->required()->description('Forge site id (from list_sites).'),
+            'server_id' => $schema->integer()->description('Forge server id the site lives on. Defaults to the configured server if omitted.'),
+            'site_id' => $schema->integer()->description('Forge site id (from list_sites). Defaults to the configured site if omitted.'),
             'limit' => $schema->integer()->description('Number of deployments to return (default 10, max 50).'),
         ];
     }
@@ -36,8 +36,8 @@ class ListDeployments extends ForgeTool
     protected function execute(Request $request): Response
     {
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
-        $siteId = (int) $request->get('site_id');
+        $serverId = $this->resolveServerId($request, $org);
+        $siteId = $this->resolveSiteId($request, $org, $serverId);
         $limit = min(50, max(1, (int) ($request->get('limit') ?? 10)));
 
         return $this->guarded(

@@ -29,8 +29,8 @@ class SetQuickDeploy extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id the site lives on.'),
-            'site_id' => $schema->integer()->required()->description('Forge site id (from list_sites).'),
+            'server_id' => $schema->integer()->description('Forge server id the site lives on. Defaults to the configured server if omitted.'),
+            'site_id' => $schema->integer()->description('Forge site id (from list_sites). Defaults to the configured site if omitted.'),
             'enabled' => $schema->boolean()->required()->description('true to enable quick deploy, false to disable it.'),
         ];
     }
@@ -44,8 +44,8 @@ class SetQuickDeploy extends ForgeTool
         }
 
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
-        $siteId = (int) $request->get('site_id');
+        $serverId = $this->resolveServerId($request, $org);
+        $siteId = $this->resolveSiteId($request, $org, $serverId);
 
         return $this->guarded(
             $request,

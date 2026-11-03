@@ -33,7 +33,7 @@ class CreateWorker extends ForgeTool
     {
         return [
             'organization' => $schema->string()->description('Organization slug. May be omitted when only one is available.'),
-            'server_id' => $schema->integer()->required()->description('Forge server id.'),
+            'server_id' => $schema->integer()->description('Forge server id. Defaults to the configured server if omitted.'),
             'command' => $schema->string()->required()->description('Command to run, e.g. "php artisan queue:work --tries=3".'),
             'site_id' => $schema->integer()->description('Site the process belongs to. Permission is then checked on that site.'),
             'name' => $schema->string()->description('Process name. Defaults to the command.'),
@@ -58,7 +58,7 @@ class CreateWorker extends ForgeTool
         }
 
         $org = $this->resolveOrganization($request);
-        $serverId = (int) $request->get('server_id');
+        $serverId = $this->resolveServerId($request, $org);
         $siteId = $request->get('site_id') !== null ? (int) $request->get('site_id') : null;
         $command = (string) $request->get('command');
         $user = (string) ($request->get('user') ?? 'forge');
