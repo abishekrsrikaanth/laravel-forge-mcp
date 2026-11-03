@@ -4,6 +4,8 @@ Stop clicking through Forge mid-session. Forge MCP is a self-hosted Laravel app 
 
 You run it on your own Forge server, connect it to Forge with your own API token, and hand each agent a separate access token whose permissions you control.
 
+**Documentation:** the full guide is in [repo-docs/](repo-docs/README.md): [getting started](repo-docs/getting-started.md), [installation](repo-docs/installation.md), [permissions](repo-docs/permissions.md), [security](repo-docs/security.md), [tool reference](repo-docs/tools.md) and [troubleshooting](repo-docs/troubleshooting.md).
+
 ## Features
 
 - 38 MCP tools covering organizations, servers, sites, deployments, logs, queue workers and daemons, `.env` files, site commands, deployment scripts, scheduled jobs, server events, service restarts and maintenance mode.
@@ -211,9 +213,21 @@ Run `php artisan config:cache` again after changing them when the config is cach
 - Phase 2: OAuth for MCP clients and Claude.ai connectors, access token expiry, notifications for risky actions, and "ask first" confirmations.
 - Phase 3: teams.
 
+## Documentation
+
+The complete documentation lives in [repo-docs/](repo-docs/README.md):
+
+- [Getting started](repo-docs/getting-started.md)
+- [Installation](repo-docs/installation.md) and [configuration](repo-docs/configuration.md)
+- [Forge API token](repo-docs/forge-api-token.md) and [connecting clients](repo-docs/connecting-clients.md)
+- [Dashboard](repo-docs/dashboard.md), [permissions](repo-docs/permissions.md) and [security](repo-docs/security.md)
+- [Tool reference](repo-docs/tools.md)
+- [Migrating from bretterer/forge-mcp-server](repo-docs/migrating-from-bretterer.md)
+- [Troubleshooting](repo-docs/troubleshooting.md) and [contributing](repo-docs/contributing.md)
+
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [contributor guide](repo-docs/contributing.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
