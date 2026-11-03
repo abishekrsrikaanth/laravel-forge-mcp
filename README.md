@@ -20,7 +20,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 - **Overrides per organization, server and site.** Allow or deny a capability for one organization, server or site without changing the token as a whole. Tools a token cannot use are not listed to the agent.
 - **Server-level only for restarts and reboot.** `restart_services` and `reboot_server` affect every site on a server, so they can never be granted for a single site.
 - **Secret scrubbing.** Known secrets (for example values from a site's `.env`) are replaced with `[REDACTED]` markers in tool output. Only `get_site_env`, behind its own `view_env` capability, returns raw values.
-- **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Entries are pruned after 90 days (`audit_retention_days` in `config/forge-mcp.php`) by a daily scheduled job.
+- **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Entries are pruned after 90 days (`audit_retention_days`) by a daily scheduled job.
 - **Worker and site matching rule.** Forge does not say which site a queue worker belongs to, so it is inferred from the worker's directory and site roots, and an action on a worker is allowed only if every site it could belong to permits it (with no match, server-level rules apply).
 
 ## Requirements
@@ -93,12 +93,11 @@ In Forge, create an API token and select only the scopes you need. The table sho
 | `reboot_server` | risky | off | Reboot the whole server. | `server:manage-services` |
 | `maintenance_mode` | action | off | Put a site into and out of maintenance mode. | `site:manage-commands` |
 
-
 Forge MCP needs no scopes beyond these. For the read-only defaults (`view`, `view_logs`), `server:view`, `server:manage-logs`, `site:manage-deploys` and `server:create-daemons` are enough.
 
 ## Connecting a client
 
-Create an access token in the dashboard (**Tokens**), choose its permissions, and copy it once; it is shown a single time. The MCP endpoint is `https://your-host/mcp`.
+Create an access token in the dashboard (**Access tokens**), choose its permissions, and copy it once; it is shown a single time. The MCP endpoint is `https://your-host/mcp`.
 
 ### Claude Code
 
@@ -130,7 +129,6 @@ The exact keys differ between clients; the dashboard shows ready-made snippets f
 
 Kind: `read-only` tools never change anything; `destructive` tools are annotated as destructive so clients can ask for confirmation; `write` tools change state without being destructive. A tool appears in the agent's tool list only when the token has its capability somewhere.
 
-TOOLS
 | Tool | Capability | Kind | What it does |
 |---|---|---|---|
 | `list_organizations` | `view` | read-only | List the Forge organizations this MCP server can access. |
@@ -180,7 +178,18 @@ Arguments: `server_id`, `site_id` and an optional `organization`. It asks the ag
 
 ## Coming from bretterer/forge-mcp-server
 
-Most tools you know are here. `get_deployments` is now `list_deployments`. `get_server_load` is unavailable: Forge's current API has no server-load endpoint. All other tools are available, and Forge MCP adds worker management, `.env` editing, site commands, scheduled jobs, server events, service restarts and maintenance mode, each behind a permission.
+| bretterer/forge-mcp-server | Forge MCP |
+|---|---|
+| `get_deployments` | `list_deployments` |
+| `toggle_quick_deploy` | `set_quick_deploy` (takes `enabled: true\|false`) |
+| `get_server_load` | Not available: Forge's current API has no server-load endpoint |
+| `list_servers`, `get_server`, `list_sites`, `get_site`, `deploy_site`, `get_deployment_script`, `update_deployment_script`, `reboot_server`, `reset_deployment_state` | Same name |
+
+Forge MCP also adds worker management, `.env` editing, site commands, scheduled jobs, server events, service restarts and maintenance mode, each behind a permission.
+
+## Configuration
+
+Tunables (poll timeout, cache lifetimes, log tail sizes, audit retention, scrub threshold) live in `config/forge-mcp.php`, not in environment variables.
 
 ## Roadmap
 
