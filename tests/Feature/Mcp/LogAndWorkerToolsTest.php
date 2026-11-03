@@ -28,7 +28,11 @@ beforeEach(function () {
         'forge.laravel.com/api/orgs/acme/servers/1/sites*' => Http::response(mcpForgeCollection('sites', [
             ['id' => 12, 'name' => 'alpha.test', 'server_id' => 1, 'root_directory' => '/home/forge/alpha.test'],
             ['id' => 13, 'name' => 'beta.test', 'server_id' => 1, 'root_directory' => '/home/forge/beta.test'],
+            ['id' => 14, 'name' => 'prod.test', 'server_id' => 1, 'root_directory' => '/home/forge/prod.test/current/public'],
         ])),
+        'forge.laravel.com/api/orgs/acme/servers/1/sites/14/environment' => Http::response(['data' => ['attributes' => ['content' => "Y=1\n"]]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/8/log' => Http::response(['data' => ['attributes' => ['content' => "above log\n"]]]),
+        'forge.laravel.com/api/orgs/acme/servers/1/background-processes/8' => Http::response(['data' => $worker(8, '/home/forge/prod.test/current', 'php artisan above')]),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/5/log' => Http::response(['data' => ['attributes' => ['content' => "w1\nsecret=base64:supersecretvalue123456\n"]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/6/log' => Http::response(['data' => ['attributes' => ['content' => "orphan log\n"]]]),
         'forge.laravel.com/api/orgs/acme/servers/1/background-processes/5' => Http::response(['data' => $worker(5, '/home/forge/alpha.test/current', 'php artisan queue:work')]),
@@ -37,6 +41,7 @@ beforeEach(function () {
             $worker(5, '/home/forge/alpha.test/current', 'php artisan queue:work'),
             $worker(6, '/opt/other', 'node app.js'),
             $worker(7, '/home/forge/beta.test', 'php artisan horizon'),
+            $worker(8, '/home/forge/prod.test/current', 'php artisan above'),
         ]]),
         'forge.laravel.com/api/orgs/acme/servers/1' => Http::response(['data' => ['id' => '1', 'type' => 'servers', 'attributes' => ['name' => 'web-1']]]),
         'forge.laravel.com/api/orgs/acme/servers*' => Http::response(mcpForgeCollection('servers', [['id' => 1, 'name' => 'web-1']])),
@@ -96,7 +101,7 @@ it('list_workers lists workers with resolved sites', function () {
 
     ForgeServer::actingAs($user)->tool(ListWorkers::class, ['server_id' => 1])
         ->assertOk()
-        ->assertSee("5 running x2 forge php artisan queue:work site:12\n6 running x2 forge node app.js site:-\n7 running x2 forge php artisan horizon site:13");
+        ->assertSee("5 running x2 forge php artisan queue:work site:12\n6 running x2 forge node app.js site:-\n7 running x2 forge php artisan horizon site:13\n8 running x2 forge php artisan above site:14");
 });
 
 it('list_workers filters by site_id', function () {
@@ -169,4 +174,32 @@ it('list tools are denied when View is denied everywhere', function () {
 
     // The tool is hidden, so nothing reaches Forge.
     Http::assertNothingSent();
+});
+
+it('get_worker_log denies a worker resolved to a denied site but allows other sites', function () use ($logsAllowed) {
+    [$user] = logUser([$logsAllowed, [Capability::ViewLogs, ScopeType::Site, new Target('acme', 1, 12), false]]);
+
+    ForgeServer::actingAs($user)->tool(GetWorkerLog::class, ['server_id' => 1, 'worker_id' => 5])
+        ->assertHasErrors(['not permitted']);
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+
+    ForgeServer::actingAs($user)->tool(GetWorkerLog::class, ['server_id' => 1, 'worker_id' => 7])
+        ->assertOk();
+});
+
+it('get_worker_log denies a worker whose directory is above a denied site root', function () use ($logsAllowed) {
+    [$user] = logUser([$logsAllowed, [Capability::ViewLogs, ScopeType::Site, new Target('acme', 1, 14), false]]);
+
+    ForgeServer::actingAs($user)->tool(GetWorkerLog::class, ['server_id' => 1, 'worker_id' => 8])
+        ->assertHasErrors(['not permitted']);
+    expect(AuditEntry::query()->latest('id')->first()->outcome)->toBe('denied');
+});
+
+it('list_workers hides a worker above a denied site root', function () {
+    [$user] = logUser([[Capability::View, ScopeType::Site, new Target('acme', 1, 14), false]]);
+
+    ForgeServer::actingAs($user)->tool(ListWorkers::class, ['server_id' => 1])
+        ->assertOk()
+        ->assertSee(['queue:work', 'node app.js'])
+        ->assertDontSee('php artisan above');
 });

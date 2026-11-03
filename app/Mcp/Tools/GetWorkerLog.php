@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
-use App\Forge\WorkerSiteResolver;
 use App\Mcp\Support\OutputTail;
 use App\Mcp\Support\ToolContext;
 use App\Permissions\Capability;
@@ -49,9 +48,8 @@ class GetWorkerLog extends ForgeTool
                 $this->serverTarget($ctx, $org, $serverId);
 
                 $worker = $ctx->forge->backgroundProcess($org, $serverId, $workerId);
-                $siteId = WorkerSiteResolver::siteIdFor($ctx->forge, $org, $serverId, $worker);
 
-                return $siteId !== null ? new Target($org, $serverId, $siteId) : new Target($org, $serverId);
+                return $this->workerTarget($ctx, $org, $serverId, $worker, $this->capability());
             },
             function (ToolContext $ctx) use ($org, $serverId, $workerId, $lines) {
                 $log = $ctx->forge->backgroundProcessLog($org, $serverId, $workerId);

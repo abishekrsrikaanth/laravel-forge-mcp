@@ -8,6 +8,7 @@ use App\Audit\AuditLogger;
 use App\Forge\ForgeClientFactory;
 use App\Forge\ForgeException;
 use App\Forge\ForgeNotConnectedException;
+use App\Forge\WorkerSiteResolver;
 use App\Mcp\Support\ToolContext;
 use App\Mcp\Support\ToolDenied;
 use App\Mcp\Support\ToolError;
@@ -259,6 +260,32 @@ abstract class ForgeTool extends Tool
         }
 
         throw new ToolError("Server {$serverId} is not in organization {$org}.");
+    }
+
+    /**
+     * The target governing a background process. Its site is inferred (see WorkerSiteResolver), so every
+     * candidate site must permit $capability: the first candidate that does not is returned so guarded()
+     * denies on it. With no candidates the server-level target is returned; otherwise the first candidate.
+     *
+     * @param  array<string, mixed>  $worker  flattened background-process record
+     */
+    protected function workerTarget(ToolContext $ctx, string $org, int $serverId, array $worker, Capability $capability): Target
+    {
+        $candidates = WorkerSiteResolver::candidateSiteIds($ctx->forge, $org, $serverId, $worker);
+
+        if ($candidates === []) {
+            return new Target($org, $serverId);
+        }
+
+        $engine = app(PermissionEngine::class);
+
+        foreach ($candidates as $siteId) {
+            if (! $engine->allows($ctx->token, $capability, new Target($org, $serverId, $siteId))) {
+                return new Target($org, $serverId, $siteId);
+            }
+        }
+
+        return new Target($org, $serverId, $candidates[0]);
     }
 
     protected function accessToken(Request $request): ?PersonalAccessToken

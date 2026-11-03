@@ -8,22 +8,29 @@ namespace App\Forge;
 final class WorkerSiteResolver
 {
     /**
+     * Sites a worker may belong to, for permission checks. Forge does not say, so this fails closed:
+     * an explicit site id wins; else the single longest site root containing the worker directory;
+     * else every site whose root lies under the directory (a worker run from `.../current` with the
+     * site root at `.../current/public`); else none, meaning server-level rules apply.
+     *
      * @param  array<string, mixed>  $worker  a flattened background-process record
+     * @return list<int>
      */
-    public static function siteIdFor(ForgeClient $client, string $org, int $serverId, array $worker): ?int
+    public static function candidateSiteIds(ForgeClient $client, string $org, int $serverId, array $worker): array
     {
         if (isset($worker['site_id']) && (int) $worker['site_id'] > 0) {
-            return (int) $worker['site_id'];
+            return [(int) $worker['site_id']];
         }
 
         $directory = self::normalise((string) ($worker['directory'] ?? ''));
 
         if ($directory === '') {
-            return null;
+            return [];
         }
 
-        $bestId = null;
-        $bestLength = 0;
+        $containing = null;
+        $containingLength = 0;
+        $below = [];
 
         foreach ($client->sites($org, $serverId) as $site) {
             $root = self::normalise((string) ($site['root_directory'] ?? ''));
@@ -33,15 +40,15 @@ final class WorkerSiteResolver
                 continue;
             }
 
-            $matches = $directory === $root || str_starts_with($directory, $root.'/');
-
-            if ($matches && strlen($root) > $bestLength) {
-                $bestId = $siteId;
-                $bestLength = strlen($root);
+            if (($directory === $root || str_starts_with($directory, $root.'/')) && strlen($root) > $containingLength) {
+                $containing = $siteId;
+                $containingLength = strlen($root);
+            } elseif (str_starts_with($root, $directory.'/')) {
+                $below[] = $siteId;
             }
         }
 
-        return $bestId;
+        return $containing !== null ? [$containing] : $below;
     }
 
     /** Trailing slashes removed; the filesystem root normalises to '' (matches nothing). */

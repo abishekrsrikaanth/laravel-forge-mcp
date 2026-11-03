@@ -58,26 +58,32 @@ class ListWorkers extends ForgeTool
                         continue;
                     }
 
-                    $siteId = WorkerSiteResolver::siteIdFor($ctx->forge, $org, $serverId, $worker);
+                    $candidates = WorkerSiteResolver::candidateSiteIds($ctx->forge, $org, $serverId, $worker);
 
-                    if ($siteFilter !== null && $siteId !== $siteFilter) {
+                    if ($siteFilter !== null && ! in_array($siteFilter, $candidates, true)) {
                         continue;
                     }
 
-                    // A worker with no resolved site is governed by server-level rules only.
-                    $target = $siteId !== null ? new Target($org, $serverId, $siteId) : new Target($org, $serverId);
+                    // Every candidate site must permit View; with none, server-level rules govern.
+                    $targets = $candidates === []
+                        ? [new Target($org, $serverId)]
+                        : array_map(fn (int $siteId) => new Target($org, $serverId, $siteId), $candidates);
 
-                    if ($engine->allows($ctx->token, Capability::View, $target)) {
-                        $rows[] = sprintf(
-                            '%d %s x%s %s %s site:%s',
-                            $id,
-                            $worker['status'] ?? '-',
-                            $worker['processes'] ?? '-',
-                            $worker['user'] ?? '-',
-                            $worker['command'] ?? '-',
-                            $siteId ?? '-',
-                        );
+                    foreach ($targets as $target) {
+                        if (! $engine->allows($ctx->token, Capability::View, $target)) {
+                            continue 2;
+                        }
                     }
+
+                    $rows[] = sprintf(
+                        '%d %s x%s %s %s site:%s',
+                        $id,
+                        $worker['status'] ?? '-',
+                        $worker['processes'] ?? '-',
+                        $worker['user'] ?? '-',
+                        $worker['command'] ?? '-',
+                        $candidates === [] ? '-' : implode(',', $candidates),
+                    );
                 }
 
                 $ctx->summary = 'Listed '.count($rows).' '.(count($rows) === 1 ? 'worker' : 'workers')." on server {$serverId}.";
