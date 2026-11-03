@@ -140,6 +140,41 @@ it('unexposed organization argument returns error without calling Forge', functi
         ->assertHasErrors(["Organization 'gamma' is not available to this MCP server."]);
 
     Http::assertNothingSent();
+    $entry = AuditEntry::query()->sole();
+    expect($entry->outcome)->toBe('denied')
+        ->and($entry->tool)->toBe('list_organizations')
+        ->and($entry->organization)->toBe('gamma')
+        ->and($entry->arguments)->toBe(['organization' => 'gamma']);
+});
+
+it('audits an unexposed organization passed to a site tool as denied without calling Forge', function () {
+    $user = mcpOwner(['acme']);
+    mcpActAs($user, mcpToken($user));
+
+    ProbeServer::actingAs($user)->tool(SiteProbe::class, ['organization' => 'gamma', 'server_id' => 5, 'site_id' => 12])
+        ->assertHasErrors(["Organization 'gamma' is not available to this MCP server."]);
+
+    Http::assertNothingSent();
+    $entry = AuditEntry::query()->sole();
+    expect([$entry->outcome, $entry->tool, $entry->organization])->toBe(['denied', 'site_probe', 'gamma']);
+});
+
+it('contains unexpected exceptions that escape execute even in debug mode', function () {
+    config(['app.debug' => true]);
+    $logged = [];
+    Event::listen(MessageLogged::class, function (MessageLogged $e) use (&$logged) {
+        $logged[] = $e->message.' '.json_encode($e->context);
+    });
+    $user = mcpOwner(['acme']);
+    mcpActAs($user, mcpToken($user));
+
+    ProbeServer::actingAs($user)->tool(LeakProbe::class, ['mode' => 'early'])
+        ->assertHasErrors(['Unexpected error while running leak_probe. Check the Forge MCP server logs.'])
+        ->assertDontSee(MCP_FORGE_TOKEN);
+
+    expect(implode("\n", $logged))->toContain('Exploded before guarding')->not->toContain(MCP_FORGE_TOKEN)
+        ->and(json_encode(DB::table('audit_entries')->get()))->not->toContain(MCP_FORGE_TOKEN)
+        ->and(AuditEntry::query()->sole()->outcome)->toBe('error');
 });
 
 it('defaults the organization when exactly one is exposed and asks when several are', function () {
@@ -168,7 +203,7 @@ it('never exposes the forge token in responses, audit rows or logs', function (s
     expect(json_encode(DB::table('audit_entries')->get()))->not->toContain(MCP_FORGE_TOKEN)
         ->and(DB::table('audit_entries')->count())->toBe(1)
         ->and(implode("\n", $logged))->not->toContain(MCP_FORGE_TOKEN);
-})->with(['return', 'raw', 'forge', 'crash']);
+})->with(['return', 'raw', 'forge', 'crash', 'early']);
 
 it('resolves a site target from the server site list', function () {
     Http::fake(['forge.laravel.com/api/orgs/acme/servers/5/sites*' => Http::response(mcpForgeCollection('sites', [

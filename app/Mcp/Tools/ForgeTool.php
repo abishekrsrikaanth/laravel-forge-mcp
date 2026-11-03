@@ -9,6 +9,7 @@ use App\Forge\ForgeClientFactory;
 use App\Forge\ForgeException;
 use App\Forge\ForgeNotConnectedException;
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Support\ToolDenied;
 use App\Mcp\Support\ToolError;
 use App\Models\AuditEntry;
 use App\Models\ForgeConnection;
@@ -48,12 +49,40 @@ abstract class ForgeTool extends Tool
 
     abstract protected function execute(Request $request): Response;
 
+    /**
+     * Runs execute() and contains everything that escapes it: ToolDenied is audited as `denied`,
+     * ToolError becomes its message, and any other exception becomes a generic error with a
+     * scrubbed log line (the package fallback would return the raw message in debug mode).
+     */
     public function handle(Request $request): Response
     {
+        $started = hrtime(true);
+
         try {
             return $this->execute($request);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (ToolDenied $e) {
+            $ctx = $this->context($request);
+            if ($ctx instanceof ToolContext) {
+                $this->audit($ctx, $request, $e->target, AuditEntry::DENIED, $e->getMessage(), $started);
+
+                return Response::error($this->scrubToken($ctx, $e->getMessage()));
+            }
+
+            return Response::error($e->getMessage());
         } catch (ToolError $e) {
             return Response::error($e->getMessage());
+        } catch (Throwable $e) {
+            $ctx = $this->context($request);
+            $token = $this->connection($request)?->token;
+            $message = $this->unexpected($e, $token);
+
+            if ($ctx instanceof ToolContext) {
+                $this->audit($ctx, $request, null, AuditEntry::ERROR, $message, $started);
+            }
+
+            return Response::error($message);
         }
     }
 
@@ -118,16 +147,15 @@ abstract class ForgeTool extends Tool
             }
 
             return $this->failed($ctx, $request, $resolved, $e->agentMessage(), $started);
+        } catch (ToolDenied $e) {
+            $message = $this->scrubToken($ctx, $e->getMessage());
+            $this->audit($ctx, $request, $e->target ?? $resolved, AuditEntry::DENIED, $message, $started);
+
+            return Response::error($message);
         } catch (ToolError|InvalidArgumentException $e) {
             return $this->failed($ctx, $request, $resolved, $e->getMessage(), $started);
         } catch (Throwable $e) {
-            Log::error('Forge MCP tool failed', [
-                'tool' => $this->name(),
-                'exception' => $e::class,
-                'message' => $this->scrubToken($ctx, $e->getMessage()),
-            ]);
-
-            return $this->failed($ctx, $request, $resolved, "Unexpected error while running {$this->name()}. Check the Forge MCP server logs.", $started);
+            return $this->failed($ctx, $request, $resolved, $this->unexpected($e, $ctx->connection->token), $started);
         }
 
         $secrets = AuditLogger::forgeTokenSecret($ctx);
@@ -163,7 +191,7 @@ abstract class ForgeTool extends Tool
      * The organization slug to act on: the `organization` argument if it is exposed, or the only
      * exposed organization when the argument is omitted. Never calls Forge.
      *
-     * @throws ToolError
+     * @throws ToolError|ToolDenied ToolDenied (audited as `denied`) when the organization is not exposed
      */
     protected function resolveOrganization(Request $request): string
     {
@@ -185,7 +213,7 @@ abstract class ForgeTool extends Tool
         if (! is_string($org) || ! in_array($org, $exposed, true)) {
             $shown = is_scalar($org) ? (string) $org : get_debug_type($org);
 
-            throw new ToolError("Organization '{$shown}' is not available to this MCP server.");
+            throw new ToolDenied("Organization '{$shown}' is not available to this MCP server.", is_string($org) ? new Target($org) : null);
         }
 
         return $org;
@@ -200,7 +228,7 @@ abstract class ForgeTool extends Tool
     protected function siteTarget(ToolContext $ctx, string $org, int $serverId, int $siteId): Target
     {
         if (! $ctx->connection->exposes($org)) {
-            throw new ToolError("Organization '{$org}' is not available to this MCP server.");
+            throw new ToolDenied("Organization '{$org}' is not available to this MCP server.", new Target($org, $serverId, $siteId));
         }
 
         foreach ($ctx->forge->sites($org, $serverId) as $site) {
@@ -280,6 +308,20 @@ abstract class ForgeTool extends Tool
             $this->redactArguments($request->all()),
             (int) ((hrtime(true) - $started) / 1_000_000),
         );
+    }
+
+    /** Log a scrubbed line (never the raw exception, which may hold the Forge token) and return the agent-facing message. */
+    private function unexpected(Throwable $e, ?string $forgeToken): string
+    {
+        $secrets = $forgeToken !== null ? SecretSet::of(['FORGE_API_TOKEN' => $forgeToken]) : SecretSet::empty();
+
+        Log::error('Forge MCP tool failed', [
+            'tool' => $this->name(),
+            'exception' => $e::class,
+            'message' => app(SecretScrubber::class)->scrub($e->getMessage(), $secrets),
+        ]);
+
+        return "Unexpected error while running {$this->name()}. Check the Forge MCP server logs.";
     }
 
     /** Remove the Forge API token (and well-known token formats) from text. */

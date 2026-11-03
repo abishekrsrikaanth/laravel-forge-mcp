@@ -29,8 +29,14 @@ class LeakProbe extends ForgeTool
 
     protected function execute(Request $request): Response
     {
-        $org = $this->resolveOrganization($request);
         $mode = (string) $request->get('mode', 'return');
+
+        if ($mode === 'early') {
+            // Escapes execute() before guarded(): handle() must contain it.
+            throw new RuntimeException('Exploded before guarding with '.$this->connection($request)?->token);
+        }
+
+        $org = $this->resolveOrganization($request);
 
         return $this->guarded($request, new Target($org), function (ToolContext $ctx) use ($mode) {
             $token = $ctx->connection->token;
