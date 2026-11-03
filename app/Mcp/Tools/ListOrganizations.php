@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Support\Defaults;
 use App\Mcp\Support\ToolContext;
+use App\Mcp\Support\ToolError;
 use App\Permissions\Capability;
 use App\Permissions\PermissionEngine;
 use App\Permissions\Target;
@@ -56,7 +58,7 @@ class ListOrganizations extends ForgeTool
             ? $this->resolveOrganization($request)
             : null;
 
-        return $this->guarded($request, new Target($only), function (ToolContext $ctx) use ($only) {
+        return $this->guarded($request, new Target($only), function (ToolContext $ctx) use ($only, $request) {
             $engine = app(PermissionEngine::class);
             $lines = [];
 
@@ -79,8 +81,30 @@ class ListOrganizations extends ForgeTool
                 return 'No organizations are available to this access token.';
             }
 
-            return "Organizations ({$count}):\n".implode("\n", $lines)."\n\nPass a slug as `organization` to list_servers and other tools.";
+            return "Organizations ({$count}):\n".implode("\n", $lines)."\n\nPass a slug as `organization` to list_servers and other tools.".$this->defaultsLine($request, $ctx);
         });
+    }
+
+    /** "Defaults: org / server 1 / site 12 (from project headers)" when any default is active; empty otherwise. */
+    private function defaultsLine(Request $request, ToolContext $ctx): string
+    {
+        try {
+            $defaults = Defaults::resolve($request, $ctx->token);
+        } catch (ToolError) {
+            return ''; // An invalid project header is reported by the tools that need it.
+        }
+
+        $parts = array_filter([
+            $defaults->organization,
+            $defaults->serverId !== null ? "server {$defaults->serverId}" : null,
+            $defaults->siteId !== null ? "site {$defaults->siteId}" : null,
+        ]);
+
+        if ($defaults->source === null || $parts === []) {
+            return '';
+        }
+
+        return "\n\nDefaults: ".implode(' / ', $parts).' ('.($defaults->source === 'header' ? 'from project headers' : 'from this access token').')';
     }
 
     /** Listing is filtered per organization, so it only needs View somewhere when no organization is given. */

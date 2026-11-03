@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp\Prompts;
 
+use App\Mcp\Support\Defaults;
+use App\Mcp\Support\ToolError;
 use App\Models\User;
 use App\Permissions\Capability;
 use App\Permissions\PermissionEngine;
@@ -38,8 +40,8 @@ class DiagnoseFailedDeploy extends Prompt
     {
         return [
             new Argument('organization', 'Organization slug. May be omitted when only one is available.', false),
-            new Argument('server_id', 'Forge server id the site lives on.', true),
-            new Argument('site_id', 'Forge site id (from list_sites).', true),
+            new Argument('server_id', 'Forge server id the site lives on. Defaults to the configured server if omitted.', false),
+            new Argument('site_id', 'Forge site id (from list_sites). Defaults to the configured site if omitted.', false),
         ];
     }
 
@@ -47,29 +49,49 @@ class DiagnoseFailedDeploy extends Prompt
     {
         $data = $request->validate([
             'organization' => ['nullable', 'string'],
-            'server_id' => ['required', 'integer', 'min:1'],
-            'site_id' => ['required', 'integer', 'min:1'],
+            'server_id' => ['nullable', 'integer', 'min:1'],
+            'site_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $organization = '';
-        $requested = $data['organization'] ?? null;
+        $user = $request->user();
+        $token = $user instanceof User ? $user->currentAccessToken() : null;
 
-        if (is_string($requested) && $requested !== '') {
-            $user = $request->user();
+        try {
+            $defaults = $token instanceof PersonalAccessToken ? Defaults::resolve($request, $token) : null;
+        } catch (ToolError $e) {
+            return Response::error($e->getMessage());
+        }
+
+        $requested = $data['organization'] ?? null;
+        $explicitOrg = is_string($requested) && $requested !== '';
+        $org = $explicitOrg ? $requested : $defaults?->organization;
+        $organization = '';
+
+        if ($org !== null) {
             $exposed = $user instanceof User ? ($user->forgeConnection?->exposedOrganizations() ?? []) : [];
 
-            if (! in_array($requested, $exposed, true)) {
+            if (! in_array($org, $exposed, true)) {
                 // Never interpolate unvetted text: it would land in the agent's instructions.
-                $shown = preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/', $requested) === 1 ? "Organization '{$requested}'" : 'That organization';
+                $shown = preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/', $org) === 1 ? "Organization '{$org}'" : 'That organization';
 
                 return Response::error("{$shown} is not available.");
             }
 
-            $organization = " in organization {$requested}";
+            $organization = " in organization {$org}";
+        }
+
+        // Same rules as ForgeTool: a default applies unless the default organization differs from the one in use.
+        $defaultsApply = $defaults !== null && ($defaults->organization === null || $defaults->organization === $org);
+
+        $serverId = $data['server_id'] ?? ($defaultsApply ? $defaults->serverId : null);
+        $siteId = $data['site_id'] ?? ($defaultsApply && $defaults->serverId === $serverId ? $defaults->siteId : null);
+
+        if ($serverId === null || $siteId === null) {
+            return Response::error('server_id and site_id are required (no default site is configured).');
         }
 
         return Response::text(
-            "Diagnose the most recent deployment of site {$data['site_id']} on server {$data['server_id']}{$organization}. "
+            "Diagnose the most recent deployment of site {$siteId} on server {$serverId}{$organization}. "
             .'Call get_deployment_status, then list_deployments (limit 3), then get_deployment_log for the latest failed deployment, then get_site_log with type application (lines 100). '
             .'Summarise the most likely cause in 3–5 bullets, quote the decisive log lines, and propose a fix. Do not deploy or change anything.'
         );

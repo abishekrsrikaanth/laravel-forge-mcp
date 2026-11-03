@@ -3,6 +3,7 @@
 use App\Forge\ForgeClient;
 use App\Mcp\AccessTokens;
 use App\Models\PermissionRule;
+use App\Models\TokenDefault;
 use App\Models\User;
 use App\Permissions\Capability;
 use App\Permissions\PermissionEngine;
@@ -257,4 +258,36 @@ it('the configure_workers acknowledgement says it runs arbitrary commands, optio
         ->call('saveGlobal')
         ->assertHasErrors(['ack.configure_workers'])
         ->assertSee('I understand this lets agents create, change and delete background processes (runs arbitrary commands, optionally as root).');
+});
+
+it('saves and clears per-token defaults validated against live Forge lists', function () {
+    [, $token] = permsSetup();
+    $page = fn () => Livewire::test('pages::tokens.permissions', ['token' => $token->getKey()]);
+
+    $page()
+        ->assertSee('Project `.mcp.json` headers override these.')
+        ->set('defaultOrg', 'acme')->set('defaultServer', '1')->set('defaultSite', '42')
+        ->call('saveDefaults')->assertHasNoErrors();
+
+    $row = TokenDefault::query()->sole();
+    expect($row->personal_access_token_id)->toBe($token->id)->and($row->organization)->toBe('acme')
+        ->and($row->server_id)->toBe(1)->and($row->site_id)->toBe(42);
+
+    // The stored defaults are shown and prefill the form.
+    $page()->assertSet('defaultServer', '1')->assertSee('acme / server web-1 (1) / site example.com (42)');
+
+    $page()->call('clearDefaults');
+    expect(TokenDefault::query()->count())->toBe(0);
+});
+
+it('rejects tampered default ids and unexposed organizations', function () {
+    [, $token] = permsSetup();
+    $page = fn () => Livewire::test('pages::tokens.permissions', ['token' => $token->getKey()]);
+
+    $page()->set('defaultOrg', 'other')->set('defaultServer', '9')->call('saveDefaults')->assertHasErrors(['defaultOrg']);
+    $page()->set('defaultOrg', 'acme')->set('defaultServer', '999')->call('saveDefaults')->assertHasErrors(['defaultServer']);
+    $page()->set('defaultOrg', 'acme')->set('defaultServer', '1')->set('defaultSite', '777')->call('saveDefaults')->assertHasErrors(['defaultSite']);
+    $page()->set('defaultOrg', 'acme')->set('defaultServer', '')->call('saveDefaults')->assertHasErrors(['defaultServer']);
+
+    expect(TokenDefault::query()->count())->toBe(0);
 });

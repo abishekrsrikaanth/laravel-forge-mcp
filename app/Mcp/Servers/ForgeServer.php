@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Mcp\Servers;
 
 use App\Mcp\Prompts\DiagnoseFailedDeploy;
+use App\Mcp\Tools\ClearDefaults;
 use App\Mcp\Tools\CreateWorker;
 use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
 use App\Mcp\Tools\DisableMaintenanceMode;
 use App\Mcp\Tools\EnableMaintenanceMode;
 use App\Mcp\Tools\GetCommandResult;
+use App\Mcp\Tools\GetDefaults;
 use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentScript;
 use App\Mcp\Tools\GetDeploymentStatus;
@@ -37,6 +39,7 @@ use App\Mcp\Tools\RestartPhpFpm;
 use App\Mcp\Tools\RestartService;
 use App\Mcp\Tools\RestartWorker;
 use App\Mcp\Tools\RunSiteCommand;
+use App\Mcp\Tools\SetDefaults;
 use App\Mcp\Tools\SetQuickDeploy;
 use App\Mcp\Tools\SetSiteEnvValues;
 use App\Mcp\Tools\StartWorker;
@@ -55,7 +58,7 @@ class ForgeServer extends Server
         Operate Laravel Forge servers and sites on behalf of the user.
 
         - Discover ids first: call `list_organizations`, then `list_servers` and `list_sites`. Never guess organization slugs or server/site ids.
-        - When only one organization is available, the `organization` argument may be omitted.
+        - When only one organization is available, the `organization` argument may be omitted. If defaults are configured (project headers or `set_defaults`), `server_id` and `site_id` may be omitted too; `get_defaults` shows them.
         - Permissions are set by the user per access token in the Forge MCP dashboard. Tools you cannot use are not listed.
         - Do not retry a denied action, and do not try to reach the same result through another tool: tell the user which permission is missing so they can enable it in the Forge MCP dashboard.
         - Secrets in output are replaced with [REDACTED] markers; do not try to recover them.
@@ -105,6 +108,9 @@ class ForgeServer extends Server
         GetMaintenanceMode::class,
         EnableMaintenanceMode::class,
         DisableMaintenanceMode::class,
+        SetDefaults::class,
+        GetDefaults::class,
+        ClearDefaults::class,
     ];
 
     protected array $prompts = [

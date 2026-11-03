@@ -5,6 +5,7 @@ use App\Forge\ForgeException;
 use App\Forge\ForgeNotConnectedException;
 use App\Models\ForgeConnection;
 use App\Models\PermissionRule;
+use App\Models\TokenDefault;
 use App\Permissions\Capability;
 use App\Permissions\PermissionEngine;
 use App\Permissions\ScopeType;
@@ -41,11 +42,18 @@ new #[Layout('layouts::app'), Title('Token permissions')] class extends Componen
 
     public bool $overrideAck = false;
 
+    public string $defaultOrg = '';
+
+    public string $defaultServer = '';
+
+    public string $defaultSite = '';
+
     public function mount(string $token): void
     {
         $this->tokenId = ctype_digit($token) ? (int) $token : 0;
         $this->accessToken(); // 404 for unknown tokens and tokens that belong to someone else
         $this->loadGlobal();
+        $this->loadDefaults();
     }
 
     public function saveGlobal(PermissionEngine $engine): void
@@ -101,6 +109,77 @@ new #[Layout('layouts::app'), Title('Token permissions')] class extends Componen
         if ($this->overrideSite !== '' && $capability !== null && ! $capability->allowsSiteScope()) {
             $this->overrideCapability = '';
         }
+    }
+
+    public function updatedDefaultOrg(): void
+    {
+        $this->defaultServer = '';
+        $this->defaultSite = '';
+    }
+
+    public function updatedDefaultServer(): void
+    {
+        $this->defaultSite = '';
+    }
+
+    public function saveDefaults(): void
+    {
+        $this->resetErrorBag();
+
+        // Livewire payloads are client-editable: re-validate against exposed orgs and live Forge lists.
+        if (collect($this->organizations)->firstWhere('slug', $this->defaultOrg) === null) {
+            $this->addError('defaultOrg', __('Choose one of the exposed organizations.'));
+
+            return;
+        }
+
+        if ($this->defaultServer === '') {
+            $this->addError('defaultServer', __('Choose a server. A default site needs its server.'));
+
+            return;
+        }
+
+        $lists = $this->defaultsForge;
+        $server = collect($lists['servers'])->first(fn (array $s) => (string) $s['id'] === $this->defaultServer);
+
+        if ($server === null) {
+            $this->addError('defaultServer', $lists['error'] ?? __('That server is not in this organization.'));
+
+            return;
+        }
+
+        $siteId = null;
+
+        if ($this->defaultSite !== '') {
+            $site = collect($lists['sites'])->first(fn (array $s) => (string) $s['id'] === $this->defaultSite);
+
+            if ($site === null) {
+                $this->addError('defaultSite', $lists['error'] ?? __('That site is not on this server.'));
+
+                return;
+            }
+
+            $siteId = (int) $site['id'];
+        }
+
+        TokenDefault::query()->updateOrCreate(
+            ['personal_access_token_id' => $this->accessToken()->getKey()],
+            ['organization' => $this->defaultOrg, 'server_id' => (int) $server['id'], 'site_id' => $siteId],
+        );
+
+        unset($this->storedDefaults);
+        Flux::toast(__('Saved.'));
+    }
+
+    public function clearDefaults(): void
+    {
+        TokenDefault::query()->where('personal_access_token_id', $this->accessToken()->getKey())->delete();
+
+        $this->defaultOrg = '';
+        $this->defaultServer = '';
+        $this->defaultSite = '';
+        unset($this->storedDefaults);
+        Flux::toast(__('Defaults cleared.'));
     }
 
     public function saveOverride(PermissionEngine $engine): void
@@ -257,6 +336,73 @@ new #[Layout('layouts::app'), Title('Token permissions')] class extends Componen
         return $result;
     }
 
+    /** @return array{servers: list<array<string, mixed>>, sites: list<array<string, mixed>>, error: string|null} */
+    #[Computed]
+    public function defaultsForge(): array
+    {
+        $result = ['servers' => [], 'sites' => [], 'error' => null];
+
+        if (collect($this->organizations)->firstWhere('slug', $this->defaultOrg) === null) {
+            return $result;
+        }
+
+        $what = 'servers';
+
+        try {
+            $client = app(ForgeClientFactory::class)->forUser(Auth::user());
+            $result['servers'] = $client->servers($this->defaultOrg);
+
+            $server = collect($result['servers'])->first(fn (array $s) => (string) $s['id'] === $this->defaultServer);
+
+            if ($server !== null) {
+                $what = 'sites';
+                $result['sites'] = $client->sites($this->defaultOrg, (int) $server['id']);
+            }
+        } catch (ForgeException $e) {
+            $result['error'] = __('Could not load :what: :message', ['what' => $what, 'message' => $e->agentMessage()]);
+        } catch (ForgeNotConnectedException $e) {
+            $result['error'] = $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /** The stored defaults described for display, or null when none are stored. */
+    #[Computed]
+    public function storedDefaults(): ?string
+    {
+        $row = TokenDefault::query()->where('personal_access_token_id', $this->tokenId)->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $parts = [$row->organization];
+        $names = ['server' => null, 'site' => null];
+
+        if ($this->connection?->exposes($row->organization)) {
+            try {
+                $client = app(ForgeClientFactory::class)->forUser(Auth::user());
+                $names['server'] = collect($client->servers($row->organization))->firstWhere('id', $row->server_id)['name'] ?? null;
+                $names['site'] = $row->server_id !== null && $row->site_id !== null
+                    ? (collect($client->sites($row->organization, $row->server_id))->firstWhere('id', $row->site_id)['name'] ?? null)
+                    : null;
+            } catch (ForgeException|ForgeNotConnectedException) {
+                // Show bare ids.
+            }
+        }
+
+        if ($row->server_id !== null) {
+            $parts[] = 'server '.($names['server'] !== null ? "{$names['server']} ({$row->server_id})" : $row->server_id);
+        }
+
+        if ($row->site_id !== null) {
+            $parts[] = 'site '.($names['site'] !== null ? "{$names['site']} ({$row->site_id})" : $row->site_id);
+        }
+
+        return implode(' / ', $parts);
+    }
+
     /** @return list<Capability> */
     #[Computed]
     public function overrideCapabilities(): array
@@ -337,6 +483,15 @@ new #[Layout('layouts::app'), Title('Token permissions')] class extends Componen
             ->all();
     }
 
+    private function loadDefaults(): void
+    {
+        $row = TokenDefault::query()->where('personal_access_token_id', $this->tokenId)->first();
+
+        $this->defaultOrg = $row?->organization ?? '';
+        $this->defaultServer = $row?->server_id !== null ? (string) $row->server_id : '';
+        $this->defaultSite = $row?->site_id !== null ? (string) $row->site_id : '';
+    }
+
     private function loadGlobal(): void
     {
         $current = $this->currentGlobal();
@@ -399,6 +554,61 @@ new #[Layout('layouts::app'), Title('Token permissions')] class extends Componen
             <flux:button type="submit" variant="primary" data-test="save-global-button">{{ __('Save global permissions') }}</flux:button>
         </div>
     </form>
+
+    @if ($this->organizations !== [])
+        <form wire:submit="saveDefaults" class="flex flex-col gap-4" data-test="defaults-card">
+            <div>
+                <flux:heading size="lg">{{ __('Defaults') }}</flux:heading>
+                <flux:text>{{ __('Used when an agent omits the organization, server or site. Project `.mcp.json` headers override these.') }}</flux:text>
+                <flux:text class="mt-1" data-test="stored-defaults">
+                    {{ $this->storedDefaults !== null ? __('Current: :defaults', ['defaults' => $this->storedDefaults]) : __('No defaults stored.') }}
+                </flux:text>
+            </div>
+
+            @if ($this->defaultsForge['error'])
+                <flux:callout variant="danger" icon="exclamation-triangle" :heading="$this->defaultsForge['error']" data-test="defaults-forge-error" />
+            @endif
+
+            <div class="grid gap-4 sm:grid-cols-3">
+                <div>
+                    <flux:select wire:model.live="defaultOrg" :label="__('Organization')">
+                        <option value="">{{ __('Choose…') }}</option>
+                        @foreach ($this->organizations as $org)
+                            <option value="{{ $org['slug'] }}">{{ $org['name'] }}</option>
+                        @endforeach
+                    </flux:select>
+                    <flux:error name="defaultOrg" />
+                </div>
+
+                <div>
+                    <flux:select wire:model.live="defaultServer" :label="__('Server')" :disabled="$defaultOrg === ''">
+                        <option value="">{{ __('Choose…') }}</option>
+                        @foreach ($this->defaultsForge['servers'] as $server)
+                            <option value="{{ $server['id'] }}">{{ $server['name'] ?? $server['id'] }}</option>
+                        @endforeach
+                    </flux:select>
+                    <flux:error name="defaultServer" />
+                </div>
+
+                <div>
+                    <flux:select wire:model.live="defaultSite" :label="__('Site (optional)')" :disabled="$defaultServer === ''">
+                        <option value="">{{ __('No default site') }}</option>
+                        @foreach ($this->defaultsForge['sites'] as $site)
+                            <option value="{{ $site['id'] }}">{{ $site['name'] ?? $site['id'] }}</option>
+                        @endforeach
+                    </flux:select>
+                    <flux:error name="defaultSite" />
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <flux:button type="submit" variant="primary" data-test="save-defaults-button">{{ __('Save defaults') }}</flux:button>
+                @if ($this->storedDefaults !== null)
+                    <flux:button wire:click="clearDefaults" data-test="clear-defaults-button">{{ __('Clear') }}</flux:button>
+                @endif
+            </div>
+        </form>
+    @endif
 
     @if ($this->organizations !== [])
         <form wire:submit="saveOverride" class="flex flex-col gap-4">

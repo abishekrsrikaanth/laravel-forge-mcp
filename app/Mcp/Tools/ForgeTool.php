@@ -535,6 +535,9 @@ abstract class ForgeTool extends Tool
     {
         $arguments = $this->redactArguments($request->all());
 
+        // The marker is ours alone: drop anything an agent sent under that name.
+        unset($arguments['_defaults']);
+
         if ($this->defaultsUsed !== null) {
             $arguments['_defaults'] = $this->defaultsUsed;
         }
