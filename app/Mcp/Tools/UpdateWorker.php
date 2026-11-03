@@ -39,6 +39,8 @@ class UpdateWorker extends ForgeTool
 
     protected function execute(Request $request): Response
     {
+        $request->validate(['name' => ['required', 'string']]);
+
         $org = $this->resolveOrganization($request);
         $serverId = (int) $request->get('server_id');
         $workerId = (int) $request->get('worker_id');
