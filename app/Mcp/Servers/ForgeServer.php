@@ -11,6 +11,7 @@ use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetSite;
+use App\Mcp\Tools\GetSiteEnv;
 use App\Mcp\Tools\GetSiteLog;
 use App\Mcp\Tools\GetWorkerLog;
 use App\Mcp\Tools\ListDeployments;
@@ -21,6 +22,7 @@ use App\Mcp\Tools\ListWorkers;
 use App\Mcp\Tools\RestartNginx;
 use App\Mcp\Tools\RestartPhpFpm;
 use App\Mcp\Tools\RestartWorker;
+use App\Mcp\Tools\SetSiteEnvValues;
 use App\Mcp\Tools\StartWorker;
 use App\Mcp\Tools\StopWorker;
 use App\Mcp\Tools\UpdateWorker;
@@ -63,5 +65,7 @@ class ForgeServer extends Server
         CreateWorker::class,
         UpdateWorker::class,
         DeleteWorker::class,
+        GetSiteEnv::class,
+        SetSiteEnvValues::class,
     ];
 }
