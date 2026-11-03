@@ -82,7 +82,6 @@ it('describes targets', function (Target $target, string $description) {
     expect($target->describe())->toBe($description);
 })->with([
     [new Target('acme', 3, 12), 'site 12 on server 3 (acme)'],
-    [new Target('acme', null, 12), 'site 12 (acme)'],
     [new Target('acme', 3), 'server 3 (acme)'],
     [new Target('acme'), 'organization acme'],
     [new Target, 'all organizations'],

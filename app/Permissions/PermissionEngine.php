@@ -37,11 +37,16 @@ final class PermissionEngine
             return false;
         }
 
+        // Unreachable through the constructor; guards Targets built around it (reflection, unserialize).
+        if ($target->siteId !== null && $target->serverId === null) {
+            return false;
+        }
+
         $exposed = $this->exposedOrganizations($token);
 
         if ($target->organization === null) {
-            // Server and site ids are only meaningful inside an organization.
-            if ($target->serverId !== null || $target->siteId !== null || $exposed === []) {
+            // Server and site ids are only meaningful inside an organization (a site id implies a server id here).
+            if ($target->serverId !== null || $exposed === []) {
                 return false;
             }
         } elseif (! in_array($target->organization, $exposed, true)) {

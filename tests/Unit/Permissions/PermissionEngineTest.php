@@ -161,11 +161,7 @@ dataset('resolution', [
     ],
     'site rule matches on organization + site id regardless of server' => [
         [[ScopeType::Site, site12(), true]],
-        [[new Target('acme', 4, 12), true], [new Target('acme', null, 12), true]],
-    ],
-    'site target without server id cannot match server rules (documented)' => [
-        [[ScopeType::Global, new Target, true], [ScopeType::Server, new Target('acme', 3), false]],
-        [[new Target('acme', null, 12), true], [site12(), false]],
+        [[new Target('acme', 4, 12), true], [new Target('acme', 3, 12), true]],
     ],
     'site deny overrides global allow' => [
         [[ScopeType::Global, new Target, true], [ScopeType::Site, site12(), false]],
@@ -173,7 +169,7 @@ dataset('resolution', [
     ],
     'org-less target with server or site id is denied' => [
         [[ScopeType::Global, new Target, true]],
-        [[new Target(null, 3), false], [new Target(null, 3, 12), false], [new Target(null, null, 12), false], [new Target, true]],
+        [[new Target(null, 3), false], [new Target(null, 3, 12), false], [new Target, true]],
     ],
     'org-less target only consults global rules' => [
         [[ScopeType::Organization, new Target('acme'), true], [ScopeType::Server, new Target('acme', 3), true]],
@@ -191,6 +187,36 @@ it('most specific rule wins', function (array $rules, array $checks) {
         expect(engine()->allows($token, Capability::Deploy, $target))->toBe($expected, $target->describe());
     }
 })->with('resolution');
+
+it('rejects site targets without a server id', function (?string $organization) {
+    new Target($organization, null, 12);
+})->throws(InvalidArgumentException::class)->with(['acme', null]);
+
+it('denies a site target without a server id even if one is built around the constructor', function () {
+    $token = peToken();
+    engine()->set($token, Capability::Deploy, ScopeType::Global, new Target, true);
+    engine()->set($token, Capability::Deploy, ScopeType::Server, new Target('acme', 3), false);
+    engine()->set($token, Capability::Deploy, ScopeType::Site, site12(), true);
+
+    // The old bypass: global allow + server 3 deny, site 12 (on server 3) asked for without its server.
+    $smuggled = (new ReflectionClass(Target::class))->newInstanceWithoutConstructor();
+    (function () {
+        $this->organization = 'acme';
+        $this->serverId = null;
+        $this->siteId = 13;
+    })->call($smuggled);
+
+    $alsoSmuggled = unserialize(serialize(new Target('acme', 3, 12)), ['allowed_classes' => [Target::class]]);
+    $alsoSmuggled = unserialize(str_replace('i:3;', 'N;', serialize($alsoSmuggled)), ['allowed_classes' => [Target::class]]);
+
+    expect($smuggled->siteId)->toBe(13)->and($smuggled->serverId)->toBeNull()
+        ->and($alsoSmuggled->siteId)->toBe(12)->and($alsoSmuggled->serverId)->toBeNull()
+        ->and(engine()->allows($token, Capability::Deploy, $smuggled))->toBeFalse()
+        ->and(engine()->allows($token, Capability::Deploy, $alsoSmuggled))->toBeFalse()
+        ->and(engine()->allows($token, Capability::View, $smuggled))->toBeFalse()
+        ->and(engine()->allows($token, Capability::Deploy, new Target('acme', 3, 13)))->toBeFalse()
+        ->and(engine()->allows($token, Capability::Deploy, site12()))->toBeTrue();
+});
 
 it('compares organizations case-sensitively', function () {
     $token = peToken(['acme', 'ACME']);
