@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
@@ -25,6 +27,8 @@ use Illuminate\Support\Carbon;
  */
 class AuditEntry extends Model
 {
+    use Prunable;
+
     public const string SUCCESS = 'success';
 
     public const string DENIED = 'denied';
@@ -44,6 +48,12 @@ class AuditEntry extends Model
             'site_id' => 'integer',
             'duration_ms' => 'integer',
         ];
+    }
+
+    /** @return Builder<static> */
+    public function prunable(): Builder
+    {
+        return static::query()->where('created_at', '<', now()->subDays((int) config('forge-mcp.audit_retention_days')));
     }
 
     /** @return BelongsTo<User, $this> */

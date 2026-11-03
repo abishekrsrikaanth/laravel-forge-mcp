@@ -21,8 +21,8 @@
                     <flux:sidebar.item icon="key" :href="route('tokens.index')" :current="request()->routeIs('tokens.*')" wire:navigate>
                         {{ __('Access tokens') }}
                     </flux:sidebar.item>
-                    <flux:sidebar.item icon="key" :href="route('tokens.index')" :current="request()->routeIs('tokens.*')" wire:navigate>
-                        {{ __('Access tokens') }}
+                    <flux:sidebar.item icon="clipboard-document-list" :href="route('audit.index')" :current="request()->routeIs('audit.*')" wire:navigate>
+                        {{ __('Audit log') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
