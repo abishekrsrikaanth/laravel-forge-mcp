@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Prompts\DiagnoseFailedDeploy;
 use App\Mcp\Tools\CreateWorker;
 use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
@@ -11,13 +12,18 @@ use App\Mcp\Tools\GetCommandResult;
 use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentScript;
 use App\Mcp\Tools\GetDeploymentStatus;
+use App\Mcp\Tools\GetIntegrationStatus;
+use App\Mcp\Tools\GetScheduledJobOutput;
 use App\Mcp\Tools\GetServer;
+use App\Mcp\Tools\GetServerEventOutput;
 use App\Mcp\Tools\GetSite;
 use App\Mcp\Tools\GetSiteEnv;
 use App\Mcp\Tools\GetSiteLog;
 use App\Mcp\Tools\GetWorkerLog;
 use App\Mcp\Tools\ListDeployments;
 use App\Mcp\Tools\ListOrganizations;
+use App\Mcp\Tools\ListScheduledJobs;
+use App\Mcp\Tools\ListServerEvents;
 use App\Mcp\Tools\ListServers;
 use App\Mcp\Tools\ListSites;
 use App\Mcp\Tools\ListWorkers;
@@ -51,6 +57,9 @@ class ForgeServer extends Server
         - Secrets in output are replaced with [REDACTED] markers; do not try to recover them.
     MARKDOWN;
 
+    /** The package default (15) would silently page tools out of view for clients that ignore nextCursor. */
+    public int $defaultPaginationLength = 50;
+
     protected array $tools = [
         ListOrganizations::class,
         ListServers::class,
@@ -81,5 +90,14 @@ class ForgeServer extends Server
         SetQuickDeploy::class,
         ResetDeploymentState::class,
         RebootServer::class,
+        GetIntegrationStatus::class,
+        ListScheduledJobs::class,
+        GetScheduledJobOutput::class,
+        ListServerEvents::class,
+        GetServerEventOutput::class,
+    ];
+
+    protected array $prompts = [
+        DiagnoseFailedDeploy::class,
     ];
 }
