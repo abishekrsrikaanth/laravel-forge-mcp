@@ -21,7 +21,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 - **Server-level only for restarts and reboot.** `restart_services` and `reboot_server` affect every site on a server, so they can never be granted for a single site.
 - **Sites on a server share one Linux user.** Every site on a Forge server runs as the same `forge` user, so a risky capability granted on one site (running commands, editing `.env`, configuring workers) can affect the other sites on that server. Grant risky capabilities per server unless you trust the agent with every site on it. Restarts, reboots, workers that run as root and raw worker (supervisor) config always require the permission at server level; a site-level worker's directory must stay inside the site's root directory.
 - **Secret scrubbing.** Known secrets (for example values from a site's `.env`) are replaced with `[REDACTED]` markers in tool output. Only `get_site_env`, behind its own `view_env` capability, returns raw values.
-- **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Entries are pruned after 90 days (`audit_retention_days`) by a daily scheduled job.
+- **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Long arguments are truncated (4,000 characters per value, 16 KB in total). Entries are pruned after 90 days (`FORGE_MCP_AUDIT_RETENTION_DAYS`) by a daily scheduled job.
 - **Worker and site matching rule.** Forge does not say which site a queue worker belongs to, so it is inferred from the worker's directory and site roots, and an action on a worker is allowed only if every site it could belong to permits it (with no match, server-level rules apply).
 
 ## Requirements
@@ -57,7 +57,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 
 4. Enable the scheduler for the site (Forge: Scheduler, or add a cron entry running `php artisan schedule:run` every minute).
 5. Enable SSL (Let's Encrypt) for the site. Always serve Forge MCP over HTTPS: access tokens travel in a header.
-6. Deploy, then visit `https://your-host/setup` to create the owner account. Setup is available once and disappears after the owner exists.
+6. Deploy, then **immediately** visit `https://your-host/setup` to create the owner account. Setup is available once and disappears after the owner exists. Until then, anyone who can reach the app can claim it, so complete setup right after the first deploy (or restrict access to the site, e.g. by IP, until you have).
 7. Open **Forge connection** in the dashboard and paste your Forge API token.
 
 ## Install elsewhere
@@ -73,7 +73,7 @@ touch database/database.sqlite   # when using SQLite
 php artisan migrate --force
 ```
 
-Serve `public/` with PHP-FPM behind Nginx or Caddy over HTTPS, run `php artisan schedule:run` every minute, and visit `/setup`.
+Serve `public/` with PHP-FPM behind Nginx or Caddy over HTTPS, run `php artisan schedule:run` every minute, and visit `/setup` straight away: until the owner account exists, anyone who can reach the app can claim it.
 
 ## Creating a Forge API token
 
@@ -190,11 +190,23 @@ Forge MCP also adds worker management, `.env` editing, site commands, scheduled 
 
 ## Configuration
 
-Tunables (poll timeout, cache lifetimes, log tail sizes, audit retention, scrub threshold) live in `config/forge-mcp.php`, not in environment variables.
+Tunables live in `config/forge-mcp.php`. Each can be overridden with an environment variable (they are listed, commented out, in `.env.example`):
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `FORGE_MCP_POLL_TIMEOUT` | `20` | Seconds to wait when polling Forge for a long-running operation (deploys, commands). |
+| `FORGE_MCP_LIST_CACHE_TTL` | `60` | Seconds to cache Forge list responses (servers, sites, ...). |
+| `FORGE_MCP_SECRETS_CACHE_TTL` | `600` | Seconds to cache the (encrypted) site secrets used for scrubbing. |
+| `FORGE_MCP_LOG_TAIL_DEFAULT` | `200` | Log lines returned by log tools by default. |
+| `FORGE_MCP_LOG_TAIL_MAX` | `1000` | Maximum log lines a log tool returns. |
+| `FORGE_MCP_AUDIT_RETENTION_DAYS` | `90` | Days to keep audit log entries. |
+| `FORGE_MCP_SCRUB_MIN_LENGTH` | `8` | Minimum length of a secret value that is scrubbed from output. |
+
+Run `php artisan config:cache` again after changing them when the config is cached.
 
 ## Roadmap
 
-- Phase 2: OAuth for MCP clients and Claude.ai connectors, notifications for risky actions, and "ask first" confirmations.
+- Phase 2: OAuth for MCP clients and Claude.ai connectors, access token expiry, notifications for risky actions, and "ask first" confirmations.
 - Phase 3: teams.
 
 ## Development
