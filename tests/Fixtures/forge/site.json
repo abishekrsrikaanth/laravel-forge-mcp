@@ -1,0 +1,1 @@
+{"data":{"id":"42","type":"sites","attributes":{"name":"example.com","status":"installed"},"relationships":{"server":{"data":{"id":"1","type":"servers"}},"tags":{"data":[{"id":"3","type":"tags"}]}},"links":{"self":{"href":"https://forge.laravel.com/api/orgs/acme/sites/42"}}}}
