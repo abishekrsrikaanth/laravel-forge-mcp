@@ -7,6 +7,7 @@ namespace App\Mcp\Servers;
 use App\Mcp\Tools\CreateWorker;
 use App\Mcp\Tools\DeleteWorker;
 use App\Mcp\Tools\DeploySite;
+use App\Mcp\Tools\GetCommandResult;
 use App\Mcp\Tools\GetDeploymentLog;
 use App\Mcp\Tools\GetDeploymentStatus;
 use App\Mcp\Tools\GetServer;
@@ -22,6 +23,7 @@ use App\Mcp\Tools\ListWorkers;
 use App\Mcp\Tools\RestartNginx;
 use App\Mcp\Tools\RestartPhpFpm;
 use App\Mcp\Tools\RestartWorker;
+use App\Mcp\Tools\RunSiteCommand;
 use App\Mcp\Tools\SetSiteEnvValues;
 use App\Mcp\Tools\StartWorker;
 use App\Mcp\Tools\StopWorker;
@@ -67,5 +69,7 @@ class ForgeServer extends Server
         DeleteWorker::class,
         GetSiteEnv::class,
         SetSiteEnvValues::class,
+        RunSiteCommand::class,
+        GetCommandResult::class,
     ];
 }
