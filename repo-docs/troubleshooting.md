@@ -10,6 +10,13 @@ A tool is listed only when the access token's capability is allowed somewhere th
 4. **The client has refreshed its tool list.** Many clients read the tool list only when they connect; restart the session after changing permissions.
 5. **`diagnose_failed_deploy` is missing:** it needs both `view` and `view_logs`, and a client that supports MCP prompts.
 
+## Defaults and `X-Forge-*` headers
+
+- **`Invalid X-Forge-Organization header.`** (or `X-Forge-Server`, `X-Forge-Site`) on every call: the header is empty or malformed. The usual cause is a `${...}` variable in `.mcp.json` that is not set, which the client sends as an empty header. Use literal values (see [the empty header trap](project-defaults.md#the-empty-header-trap)) and reconnect the server.
+- **`X-Forge-Site requires X-Forge-Server.`** Add the server header or remove the site header.
+- **`server_id is required (no default server is configured for this project or token).`** Pass `server_id`, or configure a default ([Project defaults](project-defaults.md)).
+- **The token's defaults are ignored.** Project headers replace them as a bundle whenever any `X-Forge-*` header is sent. `get_defaults` shows which source is in effect.
+
 ## "… is not permitted on … for this access token"
 
 The tool is visible, but the token is not allowed to use it on that particular organization, server or site. The message names the capability and the target, for example `Deploy is not permitted on site 34 on server 12 (acme)`. Add an allow at the right scope, or remove a deny that is more specific than your allow. See [How a permission is decided](permissions.md#how-a-permission-is-decided).

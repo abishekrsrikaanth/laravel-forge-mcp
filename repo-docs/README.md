@@ -43,6 +43,8 @@ The agent never sees your Forge API token. It only sees the tools its access tok
 | [Configuration](configuration.md) | Environment variables, Forge MCP tunables, rate limits, audit retention. |
 | [Forge API token](forge-api-token.md) | Creating the Forge token, the scopes each capability needs, minimum-scope recipes. |
 | [Connecting clients](connecting-clients.md) | Claude Code, Cursor, generic JSON config, one token per agent, rotating and revoking. |
+| [Project defaults](project-defaults.md) | Default organization, server and site from project headers or per access token, precedence, the empty header trap. |
+| [Claude Code plugin](claude-code-plugin.md) | Installing the `forge-mcp` plugin, `/forge-mcp:configure` and `/forge-mcp:diagnose`, environment variables, troubleshooting. |
 | [Dashboard](dashboard.md) | Every page of the web dashboard. |
 | [Permissions](permissions.md) | Capabilities, tiers, defaults, overrides, how rules are resolved, worked examples. |
 | [Security](security.md) | Threat model, secret scrubbing, audit log, token storage, reporting vulnerabilities. |

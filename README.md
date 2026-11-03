@@ -4,12 +4,14 @@ Stop clicking through Forge mid-session. Forge MCP is a self-hosted Laravel app 
 
 You run it on your own Forge server, connect it to Forge with your own API token, and hand each agent a separate access token whose permissions you control.
 
-**Documentation:** the full guide is in [repo-docs/](repo-docs/README.md): [getting started](repo-docs/getting-started.md), [installation](repo-docs/installation.md), [permissions](repo-docs/permissions.md), [security](repo-docs/security.md), [tool reference](repo-docs/tools.md) and [troubleshooting](repo-docs/troubleshooting.md).
+**Documentation:** the full guide is in [repo-docs/](repo-docs/README.md): [getting started](repo-docs/getting-started.md), [installation](repo-docs/installation.md), [permissions](repo-docs/permissions.md), [security](repo-docs/security.md), [tool reference](repo-docs/tools.md), [project defaults](repo-docs/project-defaults.md), the [Claude Code plugin](repo-docs/claude-code-plugin.md) and [troubleshooting](repo-docs/troubleshooting.md).
 
 ## Features
 
-- 38 MCP tools covering organizations, servers, sites, deployments, logs, queue workers and daemons, `.env` files, site commands, deployment scripts, scheduled jobs, server events, service restarts and maintenance mode.
+- 41 MCP tools covering organizations, servers, sites, deployments, logs, queue workers and daemons, `.env` files, site commands, deployment scripts, scheduled jobs, server events, service restarts, maintenance mode and defaults.
 - A `diagnose_failed_deploy` prompt for a guided, read-only post-mortem of the latest deployment.
+- Project defaults: set a default organization, server and site per project (`X-Forge-*` headers in `.mcp.json`) or per access token, so agents can leave the ids out.
+- A Claude Code plugin with `/forge-mcp:configure` and `/forge-mcp:diagnose`.
 - Per-token permissions with 12 independent capabilities, plus overrides per organization, server and site.
 - Secret scrubbing of every tool result, and an audit log of every permission-checked tool call (allowed, denied or failed).
 - A small web dashboard: first-run setup, Forge connection, access tokens with copy-paste client snippets, per-token permission editor, and an audit log viewer.
@@ -23,7 +25,7 @@ You run it on your own Forge server, connect it to Forge with your own API token
 - **Server-level only for restarts and reboot.** `restart_services` and `reboot_server` affect every site on a server, so they can never be granted for a single site.
 - **Sites on a server share one Linux user.** Every site on a Forge server runs as the same `forge` user, so a risky capability granted on one site (running commands, editing `.env`, configuring workers) can affect the other sites on that server. Grant risky capabilities per server unless you trust the agent with every site on it. Restarts, reboots, workers that run as root and raw worker (supervisor) config always require the permission at server level; a site-level worker's directory must stay inside the site's root directory.
 - **Secret scrubbing.** Known secrets (for example values from a site's `.env`) are replaced with `[REDACTED]` markers in tool output. Only `get_site_env`, behind its own `view_env` capability, returns raw values.
-- **Audit log.** Every tool call is recorded with the token, tool, target and outcome. Long arguments are truncated (4,000 characters per value, 16 KB in total). Entries are pruned after 90 days (`FORGE_MCP_AUDIT_RETENTION_DAYS`) by a daily scheduled job.
+- **Audit log.** Every permission-checked tool call (allowed, denied or failed) is recorded with the token, tool, target and outcome. Long arguments are truncated (4,000 characters per value, 16 KB in total). Entries are pruned after 90 days (`FORGE_MCP_AUDIT_RETENTION_DAYS`) by a daily scheduled job.
 - **Worker and site matching rule.** Forge does not say which site a queue worker belongs to, so it is inferred from the worker's directory and site roots, and an action on a worker is allowed only if every site it could belong to permits it (with no match, server-level rules apply).
 
 ## Requirements
@@ -105,7 +107,7 @@ Create an access token in the dashboard (**Access tokens**), choose its permissi
 ### Claude Code
 
 ```bash
-claude mcp add --transport http forge https://your-host/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http forge-mcp https://your-host/mcp --header "Authorization: Bearer <token>"
 ```
 
 ### Other clients
@@ -115,7 +117,7 @@ Any client that supports remote (streamable HTTP) MCP servers with custom header
 ```json
 {
   "mcpServers": {
-    "forge": {
+    "forge-mcp": {
       "type": "http",
       "url": "https://your-host/mcp",
       "headers": {
@@ -172,12 +174,50 @@ Kind: `read-only` tools never change anything; `destructive` tools are annotated
 | `get_maintenance_mode` | `view` | read-only | Show whether Laravel maintenance mode is on for a Forge site, and whether it is being enabled or disabled. |
 | `enable_maintenance_mode` | `maintenance_mode` | destructive | Put a Forge site into Laravel maintenance mode, so visitors get the maintenance response instead of the app. |
 | `disable_maintenance_mode` | `maintenance_mode` | write | Take a Forge site out of Laravel maintenance mode. |
+| `set_defaults` | `view` | write | Store a default organization, server and (optionally) site for this access token. |
+| `get_defaults` | `view` | read-only | Show the default organization, server and site in effect and where they come from. |
+| `clear_defaults` | `view` | write | Remove the defaults stored for this access token. |
 
-Tools that take a server or site id resolve it against the Forge account you connected and check the token's permissions for that exact organization, server and site before acting. When only one organization is available, the `organization` argument may be omitted.
+Tools that take a server or site id resolve it against the Forge account you connected and check the token's permissions for that exact organization, server and site before acting. When only one organization is available, the `organization` argument may be omitted. When a default server or site is configured, `server_id` and `site_id` may be omitted too (see [Project defaults](#project-defaults)).
 
 ### Prompt: `diagnose_failed_deploy`
 
-Arguments: `server_id`, `site_id` and an optional `organization`. It asks the agent to check the deployment status, list the last deployments, read the latest failed deployment log and the application log, then summarise the likely cause and propose a fix, without changing anything. It is offered only to tokens that have `view` and `view_logs`.
+Arguments: `server_id`, `site_id` and `organization`, all optional when defaults are configured. It asks the agent to check the deployment status, list the last deployments, read the latest failed deployment log and the application log, then summarise the likely cause and propose a fix, without changing anything. It is offered only to tokens that have `view` and `view_logs`.
+
+## Project defaults
+
+If a repository always works with the same Forge site, put its ids in the project's `.mcp.json` as headers, and tools fill them in when the agent leaves them out:
+
+```json
+{
+  "mcpServers": {
+    "forge-mcp": {
+      "type": "http",
+      "url": "${FORGE_MCP_URL}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${FORGE_MCP_TOKEN}",
+        "X-Forge-Organization": "acme",
+        "X-Forge-Server": "123",
+        "X-Forge-Site": "456"
+      }
+    }
+  }
+}
+```
+
+The URL and token come from each developer's environment, so the file can be committed. Write the `X-Forge-*` values as literals: an unset `${...}` variable becomes an empty header, and every call then fails with `Invalid X-Forge-… header.` Alternatively, store defaults per access token with `set_defaults` or on the token's page in the dashboard. Headers, when present, replace token defaults entirely, and defaults never bypass a permission check. See [Project defaults](repo-docs/project-defaults.md).
+
+## Claude Code plugin
+
+```text
+/plugin marketplace add abishekrsrikaanth/laravel-forge-mcp
+/plugin install forge-mcp@laravel-forge-mcp
+```
+
+- `/forge-mcp:configure [site name or id]` connects the project (writing the `.mcp.json` above, never a token) and picks a default organization, server and site, saved as project headers or on your access token.
+- `/forge-mcp:diagnose [site id]` diagnoses the latest deployment of a site, or the default site, without changing anything.
+
+See [Claude Code plugin](repo-docs/claude-code-plugin.md).
 
 ## Coming from bretterer/forge-mcp-server
 
@@ -220,6 +260,7 @@ The complete documentation lives in [repo-docs/](repo-docs/README.md):
 - [Getting started](repo-docs/getting-started.md)
 - [Installation](repo-docs/installation.md) and [configuration](repo-docs/configuration.md)
 - [Forge API token](repo-docs/forge-api-token.md) and [connecting clients](repo-docs/connecting-clients.md)
+- [Project defaults](repo-docs/project-defaults.md) and the [Claude Code plugin](repo-docs/claude-code-plugin.md)
 - [Dashboard](repo-docs/dashboard.md), [permissions](repo-docs/permissions.md) and [security](repo-docs/security.md)
 - [Tool reference](repo-docs/tools.md)
 - [Migrating from bretterer/forge-mcp-server](repo-docs/migrating-from-bretterer.md)

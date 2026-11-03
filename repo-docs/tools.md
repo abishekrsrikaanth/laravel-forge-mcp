@@ -1,6 +1,6 @@
 # Tool reference
 
-Forge MCP exposes 38 tools and one prompt. This page lists each tool's capability, kind, arguments and behaviour. The first paragraph under each tool heading is the description agents see.
+Forge MCP exposes 41 tools and one prompt. This page lists each tool's capability, kind, arguments and behaviour. The first paragraph under each tool heading is the description agents see.
 
 ## Conventions
 
@@ -8,6 +8,7 @@ Forge MCP exposes 38 tools and one prompt. This page lists each tool's capabilit
 - **Kind:** `read-only` tools never change anything (annotated `readOnlyHint`). `destructive` tools are annotated `destructiveHint`, so clients can ask for confirmation. `write` tools change state without being destructive.
 - **`organization`:** every tool that works inside an organization takes an optional `organization` slug (from `list_organizations`). It may be omitted when exactly one organization is exposed; with several, omitting it returns ``Several organizations are available (…). Pass the `organization` argument.`` An organization that is not exposed is denied.
 - **Ids are verified:** a `server_id` must belong to the organization (`Server 12 is not in organization acme.`) and a `site_id` to the server (`Site 34 is not on server 12.`), using Forge's own lists, before the permission check.
+- **Defaults:** `server_id` and `site_id` may be omitted when a default server or site is configured, either by project headers or with `set_defaults` (see [Project defaults](project-defaults.md)). Without one, omitting them returns `server_id is required (no default server is configured for this project or token).` or `site_id is required (no default site is configured for server 12).`. A default site applies only to its own server: pass a different `server_id` and you must pass `site_id` too. Defaults go through the same checks as explicit ids. Where `server_id` or `site_id` is only an optional filter (for example `list_sites`, `list_workers`), it is never filled in from defaults.
 - **Output** is plain text, scrubbed of secrets (see [Security](security.md#secret-scrubbing)), possibly followed by `Warning: …` lines.
 - **`lines`:** log tools return the last `lines` lines (default 200, maximum 1000; see [Configuration](configuration.md#forge-mcp-tunables)). When output is cut, it starts with `[showing last N of M lines]`.
 - **Denials** return `<Capability> is not permitted on <target> for this access token. The user can enable it in the Forge MCP dashboard.` and are recorded in the audit log.
@@ -55,6 +56,9 @@ Forge MCP exposes 38 tools and one prompt. This page lists each tool's capabilit
 | [`get_maintenance_mode`](#get_maintenance_mode) | `view` | read-only |
 | [`enable_maintenance_mode`](#enable_maintenance_mode) | `maintenance_mode` | destructive |
 | [`disable_maintenance_mode`](#disable_maintenance_mode) | `maintenance_mode` | write |
+| [`set_defaults`](#set_defaults) | `view` | write |
+| [`get_defaults`](#get_defaults) | `view` | read-only |
+| [`clear_defaults`](#clear_defaults) | `view` | write |
 
 ## Organizations, servers and sites
 
@@ -94,7 +98,7 @@ Show details of one Forge server: name, IP address, provider, region, PHP and Ub
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `server_id` | integer | no | Forge server id (from list_servers). Defaults to the configured server if omitted. |
 
 Returns `name`, `ip_address`, `provider`, `region`, `php_version`, `ubuntu_version`, `database_type` and `is_ready`. The server id is checked against the organization's server list first.
 
@@ -122,8 +126,8 @@ Show details of one Forge site: name, URL, repository, PHP version, deployment s
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Returns `name`, `url`, `repository`, `php_version`, `deployment_status`, `quick_deploy`, `root_directory` and `web_directory`. The site must be on the given server.
 
@@ -139,8 +143,8 @@ Show the current deployment status of a Forge site (idle when no deployment is r
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Returns `status` (`idle` when nothing is running) and `started_at`.
 
@@ -154,8 +158,8 @@ List recent deployments of a Forge site: id, status, start time, commit hash and
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `limit` | integer | no | Number of deployments to return (default 10, max 50). |
 
 Returns one line per deployment: `id status started_at short-hash first-line-of-commit-message`. `limit` is clamped to 1–50.
@@ -170,8 +174,8 @@ Read the output log of one deployment of a Forge site (last lines only). Secrets
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `deployment_id` | integer | yes | Deployment id (from list_deployments). |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
 
@@ -187,8 +191,8 @@ Deploy a Forge site and wait briefly for the result. Returns the final status an
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Triggers a deployment, then polls Forge for up to `FORGE_MCP_POLL_TIMEOUT` seconds (default 20). If the deployment finishes in time, the result is its final status and the last 50 lines of its log. If not, the result is `Deployment {id} is still {status}. Call get_deployment_status to check progress.` Once the deployment has started, a failure while checking progress still reports the deployment id, so the agent does not deploy twice.
 
@@ -202,8 +206,8 @@ Reset the deployment state of a Forge site that is stuck in "deploying", so a ne
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Use this only when Forge shows a site as deploying but no deployment is actually running.
 
@@ -219,8 +223,8 @@ Read the application, nginx access or nginx error log of a Forge site (last line
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `type` | string | yes | Which log to read. One of: `"application"`, `"nginx-access"`, `"nginx-error"`. |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
 
@@ -238,7 +242,7 @@ List the background processes (queue workers, daemons) on a Forge server: id, st
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `site_id` | integer | no | Only list workers belonging to this site. |
 
 Returns one line per process: `id status xprocesses user command site:ids`. Forge does not record which site a worker belongs to, so Forge MCP infers the candidate sites from the worker's directory (see [Workers and sites](permissions.md#workers-and-sites)). A worker is listed only if the token can `view` every candidate site, or the server when there is no candidate. With `site_id`, only workers whose candidates include that site are listed.
@@ -253,7 +257,7 @@ Read the log of a background process (queue worker or daemon) on a Forge server 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
 
@@ -269,7 +273,7 @@ Restart a background process (queue worker or daemon) on a Forge server. Running
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 
 Needs `manage_workers` on every candidate site of the worker (or on the server when it has none). The change is queued in Forge; the result confirms it was queued.
@@ -284,7 +288,7 @@ Stop a background process (queue worker or daemon) on a Forge server. It stays s
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 
 Same permission rule as `restart_worker`.
@@ -299,7 +303,7 @@ Start a stopped background process (queue worker or daemon) on a Forge server.
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 
 Same permission rule as `restart_worker`.
@@ -314,7 +318,7 @@ Create a background process (queue worker or daemon) on a Forge server, optional
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `command` | string | yes | Command to run, e.g. "php artisan queue:work --tries=3". |
 | `site_id` | integer | no | Site the process belongs to. Permission is then checked on that site. |
 | `name` | string | no | Process name. Defaults to the command. |
@@ -337,7 +341,7 @@ Rename a background process (queue worker or daemon) and optionally replace its 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 | `name` | string | yes | New name for the process. |
 | `config` | string | no | Raw supervisor configuration to replace the current one (needs the permission on the whole server). Omit to keep it. |
@@ -354,7 +358,7 @@ Delete a background process (queue worker or daemon) from a Forge server. This s
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `worker_id` | integer | yes | Background process id (from list_workers). |
 
 Same permission rule as `restart_worker`, with `configure_workers`.
@@ -371,7 +375,7 @@ Restart Nginx on a Forge server. Briefly interrupts web serving on every site on
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `server_id` | integer | no | Forge server id (from list_servers). Defaults to the configured server if omitted. |
 
 Server-level only: `restart_services` cannot be granted per site. The restart is queued in Forge.
 
@@ -385,7 +389,7 @@ Reload or restart PHP-FPM on a Forge server. The PHP version defaults to the sit
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `server_id` | integer | no | Forge server id (from list_servers). Defaults to the configured server if omitted. |
 | `action` | string | no | reload (default) or restart. One of: `"reload"`, `"restart"`. Default: `"reload"`. |
 | `site_id` | integer | no | Optional site id, used only to detect the PHP version. |
 | `version` | string | no | PHP version such as php84. Overrides detection. |
@@ -402,7 +406,7 @@ Restart Redis, Supervisor, MySQL or Postgres on a Forge server. Briefly interrup
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `server_id` | integer | no | Forge server id (from list_servers). Defaults to the configured server if omitted. |
 | `service` | string | yes | Service to restart. One of: `"redis"`, `"supervisor"`, `"mysql"`, `"postgres"`. |
 
 Server-level only.
@@ -417,7 +421,7 @@ Reboot a Forge server. Every site and service on it is unavailable until it is b
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `server_id` | integer | no | Forge server id (from list_servers). Defaults to the configured server if omitted. |
 
 Server-level only: `reboot_server` cannot be granted per site. The reboot is queued in Forge.
 
@@ -433,8 +437,8 @@ Show the full .env file of a Forge site, including secret values. Do not repeat 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 This is the only tool whose output is **not** scrubbed of `.env` values: it exists to show them. Only the Forge API token itself is still removed. Keep `view_env` off unless an agent really needs it.
 
@@ -448,8 +452,8 @@ Set or remove individual keys in the .env file of a Forge site. Comments and oth
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `set` | object | no | Keys to add or change, as an object of KEY => string value. |
 | `remove` | array of string | no | Keys to remove. |
 
@@ -472,8 +476,8 @@ Run a shell command in the directory of a Forge site and wait briefly for the re
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `command` | string | yes | Shell command to run in the site directory (max 2000 characters). |
 
 - `command` must be a single line (join several commands with `&&` or `;`), at most 2,000 characters, without NUL bytes.
@@ -491,8 +495,8 @@ Get the status, exit code and output of a command started with run_site_command.
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `command_id` | integer | yes | Command id returned by run_site_command. |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
 
@@ -510,8 +514,8 @@ Read the deployment script of a Forge site. Secrets found in the script are repl
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Known secrets in the script are replaced with `[REDACTED…]` markers, so a script read here is not always safe to write back unchanged.
 
@@ -525,8 +529,8 @@ Replace the deployment script of a Forge site with the given content. The next d
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `content` | string | yes | The full new deployment script (bash), up to 50,000 characters. |
 
 `content` must be non-empty, at most 50,000 characters and free of NUL bytes. The result only reports the number of lines. The script is stored in the audit log (scrubbed and truncated to 4,000 characters).
@@ -541,8 +545,8 @@ Enable or disable quick deploy (push to deploy) for a Forge site. When enabled, 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `enabled` | boolean | yes | true to enable quick deploy, false to disable it. |
 
 Replaces `toggle_quick_deploy` from bretterer/forge-mcp-server; pass the desired state explicitly.
@@ -559,8 +563,8 @@ Show whether Horizon, Octane or Reverb is enabled and installed on a Forge site,
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `integration` | string | yes | Which integration to inspect. One of: `"horizon"`, `"octane"`, `"reverb"`. |
 
 Returns `{integration}: enabled=… installed=…` followed by one line per backing process (`id status command`).
@@ -575,7 +579,7 @@ List scheduled jobs (cron) of a Forge server, or of one site when site_id is giv
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `site_id` | integer | no | Forge site id; omit to list the server-level jobs. |
 
 Returns one line per job: `id frequency user command` (the cron expression is shown for custom frequencies), at most 100 lines. Without `site_id`, server-level jobs may touch any site, so `view` is required on the server **and** on every site of the server.
@@ -590,7 +594,7 @@ Read the last output of a scheduled job on a Forge server, or on one site when s
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `job_id` | integer | yes | Scheduled job id (from list_scheduled_jobs). |
 | `site_id` | integer | no | Forge site id when the job belongs to a site. |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
@@ -607,7 +611,7 @@ List recent events of a Forge server: id, time, description and the user it ran 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `limit` | integer | no | Number of events to return (default 20, max 50). |
 
 Returns one line per event: `id time description (user)`. `limit` is clamped to 1–50. Events can concern any site, so `view` is required on the server and on every site of the server.
@@ -622,7 +626,7 @@ Read the output of a Forge server event (last lines only). Secrets of the server
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id. |
+| `server_id` | integer | no | Forge server id. Defaults to the configured server if omitted. |
 | `event_id` | integer | yes | Event id (from list_server_events). |
 | `lines` | integer | no | Number of trailing lines to return. Default 200 (`FORGE_MCP_LOG_TAIL_DEFAULT`), capped at 1000 (`FORGE_MCP_LOG_TAIL_MAX`). |
 
@@ -640,8 +644,8 @@ Show whether Laravel maintenance mode is on for a Forge site, and whether it is 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Returns `Maintenance mode: on` or `off`, with `(status: enabling)` or `(status: disabling)` while a change is in progress.
 
@@ -655,8 +659,8 @@ Put a Forge site into Laravel maintenance mode, so visitors get the maintenance 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 | `secret` | string | no | Optional bypass secret (max 128 characters, no whitespace). |
 | `status` | integer | no | HTTP status returned to visitors: 304, 307, 410 or 503. One of: `304`, `307`, `410`, `503`. Default: `503`. |
 | `redirect` | string | no | Optional redirect target: a relative path starting with "/" or an http(s) URL. |
@@ -673,10 +677,45 @@ Take a Forge site out of Laravel maintenance mode. The change is applied asynchr
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
-| `server_id` | integer | yes | Forge server id the site lives on. |
-| `site_id` | integer | yes | Forge site id (from list_sites). |
+| `server_id` | integer | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | integer | no | Forge site id (from list_sites). Defaults to the configured site if omitted. |
 
 Applied asynchronously; call `get_maintenance_mode` to confirm.
+
+## Defaults
+
+### `set_defaults`
+
+Store a default organization, server and (optionally) site for this access token, used when later calls omit them. Project .mcp.json headers override these. Replaces any previously stored defaults.
+
+- **Capability:** `view`
+- **Kind:** write
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `organization` | string | no | Organization slug. Optional when only one organization is exposed. |
+| `server_id` | integer | yes | Forge server id (from list_servers). |
+| `site_id` | integer | no | Optional Forge site id on that server (from list_sites). |
+
+Arguments are used as given and are never filled in from existing defaults; `organization` may be omitted only when exactly one organization is exposed. The server (and site, when given) is verified like any other target (`Site 34 is not on server 12.`) and the token needs `view` on it. One set of defaults is stored per access token and replaced on every call; it is deleted with the token. The same values can be edited on the token's page in the dashboard. Project headers, when present, take precedence (see [Project defaults](project-defaults.md)).
+
+### `get_defaults`
+
+Show the default organization, server and site in effect for this call and where they come from (project headers or this access token).
+
+- **Capability:** `view`
+- **Kind:** read-only
+
+Returns `Effective defaults (from project headers): …` or `(from this access token): …`, or `No defaults are active.` When project headers are in effect and the token also has stored defaults, a second line shows them as overridden. Server and site names are shown only for targets the token can `view`; otherwise the bare id is shown. An invalid project header is reported as `Invalid X-Forge-… header.`
+
+### `clear_defaults`
+
+Remove the defaults stored for this access token. Project .mcp.json headers, if any, still apply.
+
+- **Capability:** `view`
+- **Kind:** write
+
+Deletes the token's stored defaults. If project headers are in effect, the result says that they still apply. Headers are configured in the client, so this tool cannot remove them.
 
 ## Prompt: `diagnose_failed_deploy`
 
@@ -685,7 +724,7 @@ Guided, read-only diagnosis of the most recent deployment of a Forge site.
 | Argument | Required | Description |
 |---|---|---|
 | `organization` | no | Organization slug. May be omitted when only one is available. Must be an exposed organization. |
-| `server_id` | yes | Forge server id the site lives on. |
-| `site_id` | yes | Forge site id (from `list_sites`). |
+| `server_id` | no | Forge server id the site lives on. Defaults to the configured server if omitted. |
+| `site_id` | no | Forge site id (from `list_sites`). Defaults to the configured site if omitted. |
 
-The prompt asks the agent to call `get_deployment_status`, then `list_deployments` (limit 3), then `get_deployment_log` for the latest failed deployment, then `get_site_log` with type `application` (100 lines); to summarise the most likely cause in 3–5 bullets, quote the decisive log lines and propose a fix; and not to deploy or change anything. It is offered only to tokens that have both `view` and `view_logs` somewhere. The tools it names are still subject to the token's permissions on that site.
+The prompt asks the agent to call `get_deployment_status`, then `list_deployments` (limit 3), then `get_deployment_log` for the latest failed deployment, then `get_site_log` with type `application` (100 lines); to summarise the most likely cause in 3–5 bullets, quote the decisive log lines and propose a fix; and not to deploy or change anything. Without a server and site (given or defaulted) it returns `server_id and site_id are required (no default site is configured).` It is offered only to tokens that have both `view` and `view_logs` somewhere. The tools it names are still subject to the token's permissions on that site.

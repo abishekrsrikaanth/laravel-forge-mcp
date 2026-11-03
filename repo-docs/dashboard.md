@@ -25,11 +25,11 @@ The first-run page. It creates the owner account (name, email, password) and log
 - **Your tokens:** each token with when it was last used and a permission summary, for example `Read-only` or `Deploy, Edit .env (2 scoped)`. A bare capability name means it is allowed globally; `(N scoped)` counts allow rules for an organization, server or site.
 - **Permissions:** opens the permission editor for the token.
 - **Revoke:** deletes the token after a confirmation. Agents using it lose access immediately. Its audit log entries stay.
-- **Connect a client:** a `claude mcp add` command and a JSON config, built from `APP_URL`. Right after you create a token, they include it.
+- **Connect a client:** a `claude mcp add` command and a JSON config for a server named `forge-mcp`, built from `APP_URL`. Right after you create a token, they include it.
 
 ## Token permissions (`/tokens/{id}/permissions`)
 
-See [Permissions](permissions.md) for how rules are resolved. The page has three parts.
+See [Permissions](permissions.md) for how rules are resolved. The page has four parts.
 
 ### Global permissions
 
@@ -51,6 +51,10 @@ Allowing a risky capability needs the acknowledgement tick here too. `restart_se
 ### Current overrides
 
 Every organization, server and site rule of the token, with a **Remove** button.
+
+### Defaults
+
+A default **Organization**, **Server** and optional **Site** for the token, picked from your Forge servers and sites. Tools use them when the agent leaves those arguments out, unless the client sends project headers. **Save defaults** stores them, **Clear** removes them, and the card shows what is stored. See [Project defaults](project-defaults.md).
 
 ## Audit log (`/audit`)
 

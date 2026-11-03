@@ -39,10 +39,12 @@ A new token is read-only: it can use `view` and `view_logs` and nothing else. Yo
 ## 5. Connect Claude Code
 
 ```bash
-claude mcp add --transport http forge https://mcp.example.com/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http forge-mcp https://mcp.example.com/mcp --header "Authorization: Bearer <token>"
 ```
 
 The **Access tokens** page shows this command (and a JSON config for other clients) with your URL filled in. For other clients see [Connecting clients](connecting-clients.md).
+
+Optional: install the [Claude Code plugin](claude-code-plugin.md) and run `/forge-mcp:configure` in your project to set a default site, so you can leave out server and site ids (see [Project defaults](project-defaults.md)).
 
 ## 6. Try it
 
@@ -52,7 +54,7 @@ Start a session and ask, for example:
 - "Which sites are on server `<name>`, and what is their deployment status?"
 - "Show the last deploy log for site `<name>`."
 - "Read the last 100 lines of the application log of `<site>`."
-- "Diagnose the last failed deploy of `<site>`." (uses the `diagnose_failed_deploy` prompt if your client supports prompts)
+- "Diagnose the last failed deploy of `<site>`." (uses the `diagnose_failed_deploy` prompt if your client supports prompts; with the plugin, `/forge-mcp:diagnose`)
 
 Then open **Audit log** in the dashboard: every permission-checked call the agent made is there, with its outcome.
 

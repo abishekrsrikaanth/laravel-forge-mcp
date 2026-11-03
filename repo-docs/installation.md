@@ -115,6 +115,6 @@ Access tokens, permissions, the Forge connection and the audit log live in the d
 ## Uninstalling
 
 1. In Forge, delete (revoke) the Forge API token you gave Forge MCP. This cuts off access even if the app or its database still exists somewhere.
-2. Remove the MCP server from each client (for Claude Code: `claude mcp remove forge`).
+2. Remove the MCP server from each client (for Claude Code: `claude mcp remove forge-mcp`).
 3. Optionally, in the dashboard, use **Disconnect** on the **Forge connection** page, which deletes the stored token.
 4. Delete the site in Forge (or remove the app from your host), and drop its database if it used MySQL or Postgres.

@@ -8,7 +8,7 @@ There are twelve capabilities, grouped into three tiers. They are independent: n
 
 | Capability | Tier | Default | Per site | What it allows | Tools |
 |---|---|---|---|---|---|
-| `view` | read | allowed | yes | Browse organizations, servers and sites, and check deployment status. | `list_organizations`, `list_servers`, `get_server`, `list_sites`, `get_site`, `get_deployment_status`, `list_deployments`, `list_workers`, `get_deployment_script`, `get_integration_status`, `list_scheduled_jobs`, `list_server_events`, `get_maintenance_mode` |
+| `view` | read | allowed | yes | Browse organizations, servers and sites, and check deployment status. | `list_organizations`, `list_servers`, `get_server`, `list_sites`, `get_site`, `get_deployment_status`, `list_deployments`, `list_workers`, `get_deployment_script`, `get_integration_status`, `list_scheduled_jobs`, `list_server_events`, `get_maintenance_mode`, `set_defaults`, `get_defaults`, `clear_defaults` |
 | `view_logs` | read | allowed | yes | Read site, deployment and worker logs. | `get_deployment_log`, `get_site_log`, `get_worker_log`, `get_command_result`, `get_scheduled_job_output`, `get_server_event_output` |
 | `deploy` | action | off | yes | Trigger deployments. | `deploy_site`, `reset_deployment_state` |
 | `restart_services` | action | off | **no** | Restart services such as PHP, Nginx and databases. | `restart_nginx`, `restart_php_fpm`, `restart_service` |

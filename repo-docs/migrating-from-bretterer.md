@@ -41,7 +41,7 @@ In Forge MCP, tools work inside a Forge **organization** and take an optional `o
 
    ```bash
    claude mcp remove <old-server-name>
-   claude mcp add --transport http forge https://your-host/mcp --header "Authorization: Bearer <token>"
+   claude mcp add --transport http forge-mcp https://your-host/mcp --header "Authorization: Bearer <token>"
    ```
 
 6. Update any saved prompts or scripts that call `get_deployments` or `toggle_quick_deploy`.
